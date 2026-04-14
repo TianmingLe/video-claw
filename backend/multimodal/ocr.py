@@ -6,9 +6,10 @@ class OCRProvider(ABC):
         pass
 
 class FakeOCRProvider(OCRProvider):
-    def __init__(self, model: str = None, api_key: str = None):
+    def __init__(self, model: str = None, api_key: str = None, base_url: str = None):
         self.model = model or "fake-vlm-model"
         self.api_key = api_key
+        self.base_url = base_url
         
     def extract(self, video_path: str) -> str:
         return f"[OCR by {self.model}] Simulated text extracted from {video_path}: Tip 1, Tip 2, Conclusion."

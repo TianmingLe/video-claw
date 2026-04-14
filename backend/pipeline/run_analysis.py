@@ -17,11 +17,13 @@ class AnalysisPipeline:
         self.asr_provider = FakeASRProvider()
         self.ocr_provider = FakeOCRProvider(
             model=self.config.get("vlm_model"), 
-            api_key=self.config.get("vlm_api_key")
+            api_key=self.config.get("vlm_api_key"),
+            base_url=self.config.get("vlm_base_url")
         )
         self.llm_client = FakeLLMClient(
             model_name=self.config.get("llm_model", "fake-gpt-4o-mini"),
-            api_key=self.config.get("llm_api_key")
+            api_key=self.config.get("llm_api_key"),
+            base_url=self.config.get("llm_base_url")
         )
         self.analyzer = LLMAnalyzer(self.llm_client)
         self.exporter = MarkdownExporter()

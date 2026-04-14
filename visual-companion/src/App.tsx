@@ -22,6 +22,8 @@ export default function App() {
   const [llmApiKey, setLlmApiKey] = useState('');
   const [vlmModel, setVlmModel] = useState('gpt-4o');
   const [vlmApiKey, setVlmApiKey] = useState('');
+  const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.openai.com/v1');
+  const [vlmBaseUrl, setVlmBaseUrl] = useState('https://api.openai.com/v1');
   
   const [backendPort, setBackendPort] = useState<string>('8000'); // 默认回退
   const wsRef = useRef<WebSocket | null>(null);
@@ -74,8 +76,10 @@ export default function App() {
           depth: depth,
           llm_model: llmModel,
           llm_api_key: llmApiKey,
+          llm_base_url: llmBaseUrl,
           vlm_model: vlmModel,
-          vlm_api_key: vlmApiKey
+          vlm_api_key: vlmApiKey,
+          vlm_base_url: vlmBaseUrl
         })
       });
       if (!response.ok) throw new Error('Network response was not ok');
@@ -182,45 +186,81 @@ export default function App() {
               </h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">LLM 文本模型 (用于总结与分析)</label>
-                  <select 
-                    className="w-full border border-gray-300 rounded-lg p-2.5 mb-2 bg-white"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">LLM 文本模型 (总结与分析)</label>
+                  <input 
+                    list="llm-models"
+                    className="w-full border border-gray-300 rounded-lg p-2.5 mb-2 bg-white text-sm"
                     value={llmModel}
                     onChange={(e) => setLlmModel(e.target.value)}
-                  >
+                    placeholder="选择或输入模型名称，例如: deepseek-chat"
+                  />
+                  <datalist id="llm-models">
                     <option value="gpt-4o-mini">GPT-4o Mini (推荐)</option>
                     <option value="gpt-4o">GPT-4o</option>
-                    <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
-                    <option value="deepseek-chat">DeepSeek Chat</option>
-                    <option value="custom">自定义模型</option>
-                  </select>
-                  <input 
-                    type="password" 
-                    placeholder="输入 LLM API Key (为空则使用环境配置或 Fake 模式)" 
-                    value={llmApiKey}
-                    onChange={(e) => setLlmApiKey(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-2.5 font-mono text-sm" 
-                  />
+                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Latest)</option>
+                    <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                    <option value="deepseek-chat">DeepSeek Chat (V3)</option>
+                    <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+                    <option value="qwen-turbo">Qwen Turbo</option>
+                    <option value="qwen-max">Qwen Max</option>
+                    <option value="glm-4">GLM-4 (智谱)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                  </datalist>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input 
+                      type="text" 
+                      placeholder="Base URL (例如: https://api.deepseek.com/v1)" 
+                      value={llmBaseUrl}
+                      onChange={(e) => setLlmBaseUrl(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-2 font-mono text-xs text-gray-600" 
+                    />
+                    <input 
+                      type="password" 
+                      placeholder="API Key (为空用系统配置)" 
+                      value={llmApiKey}
+                      onChange={(e) => setLlmApiKey(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-2 font-mono text-xs text-gray-600" 
+                    />
+                  </div>
                 </div>
                 
-                <div className="pt-2 border-t border-gray-100">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">VLM 多模态模型 (用于 OCR/画面理解)</label>
-                  <select 
-                    className="w-full border border-gray-300 rounded-lg p-2.5 mb-2 bg-white"
+                <div className="pt-3 border-t border-gray-100">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VLM 多模态模型 (OCR/画面理解)</label>
+                  <input 
+                    list="vlm-models"
+                    className="w-full border border-gray-300 rounded-lg p-2.5 mb-2 bg-white text-sm"
                     value={vlmModel}
                     onChange={(e) => setVlmModel(e.target.value)}
-                  >
-                    <option value="gpt-4o">GPT-4o (Vision)</option>
-                    <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
-                    <option value="custom">自定义模型</option>
-                  </select>
-                  <input 
-                    type="password" 
-                    placeholder="输入 VLM API Key (为空则使用环境配置或 Fake 模式)" 
-                    value={vlmApiKey}
-                    onChange={(e) => setVlmApiKey(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-2.5 font-mono text-sm" 
+                    placeholder="选择或输入视觉模型，例如: gpt-4o"
                   />
+                  <datalist id="vlm-models">
+                    <option value="gpt-4o">GPT-4o (Vision)</option>
+                    <option value="gpt-4-turbo">GPT-4 Turbo with Vision</option>
+                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                    <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="qwen-vl-plus">Qwen VL Plus</option>
+                    <option value="qwen-vl-max">Qwen VL Max</option>
+                    <option value="glm-4v">GLM-4V (智谱)</option>
+                  </datalist>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="Base URL (兼容 OpenAI API)" 
+                      value={vlmBaseUrl}
+                      onChange={(e) => setVlmBaseUrl(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-2 font-mono text-xs text-gray-600" 
+                    />
+                    <input 
+                      type="password" 
+                      placeholder="API Key" 
+                      value={vlmApiKey}
+                      onChange={(e) => setVlmApiKey(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-2 font-mono text-xs text-gray-600" 
+                    />
+                  </div>
                 </div>
               </div>
             </div>
