@@ -30,16 +30,17 @@ export default function App() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     return `${wsProtocol}://${window.location.host}/ws`;
   });
-  const [wsRetry, setWsRetry] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [isAutoScroll, setIsAutoScroll] = useState(true);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
 
   useEffect(() => {
     // 监听 Electron 传来的动态端口
     if (window.electronAPI) {
       window.electronAPI.onBackendPort((port: string) => {
-        setLogs(prev => [...prev, `[System] Discovered Backend on port ${port}`]);
+        setLogs(prev => (prev[prev.length - 1] === `[System] Discovered Backend on port ${port}` ? prev : [...prev, `[System] Discovered Backend on port ${port}`]));
         setBackendHttpBase(`http://127.0.0.1:${port}`);
         setBackendWsUrl(`ws://127.0.0.1:${port}/ws`);
       });
@@ -47,35 +48,95 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket(backendWsUrl);
-    ws.onopen = () => setLogs(prev => [...prev, `[System] Connected to Python Engine.`]);
-    ws.onmessage = (event) => {
-      setLogs(prev => [...prev, event.data]);
-      if (event.data.includes('[SUCCESS]')) {
-        setIsRunning(false);
+    const appendLog = (msg: string) => {
+      setLogs(prev => (prev[prev.length - 1] === msg ? prev : [...prev, msg]));
+    };
+
+    let disposed = false;
+    let pingTimer: number | null = null;
+    let ws: WebSocket | null = null;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
     };
-    ws.onerror = () => {
-      setLogs(prev => [...prev, '[Error] Failed to connect to Engine.']);
-      setTimeout(() => setWsRetry(v => v + 1), 1500);
+
+    const clearPingTimer = () => {
+      if (pingTimer) {
+        window.clearInterval(pingTimer);
+        pingTimer = null;
+      }
     };
-    ws.onclose = () => {
-      setLogs(prev => [...prev, '[System] Disconnected.']);
-      setTimeout(() => setWsRetry(v => v + 1), 1500);
+
+    const scheduleReconnect = () => {
+      if (disposed) return;
+      clearReconnectTimer();
+      reconnectAttemptRef.current += 1;
+      const delay = Math.min(15000, 800 * reconnectAttemptRef.current);
+      reconnectTimerRef.current = window.setTimeout(() => {
+        connect();
+      }, delay);
     };
-    
-    wsRef.current = ws;
-    const ping = setInterval(() => {
+
+    const connect = () => {
+      if (disposed) return;
+      clearPingTimer();
+
       try {
-        if (ws.readyState === WebSocket.OPEN) ws.send('ping');
-      } catch (_e) {}
-    }, 20000);
+        ws = new WebSocket(backendWsUrl);
+      } catch (_e) {
+        appendLog('[Error] Failed to create WebSocket.');
+        scheduleReconnect();
+        return;
+      }
+
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (disposed) return;
+        reconnectAttemptRef.current = 0;
+        appendLog('[System] Connected to Python Engine.');
+        clearPingTimer();
+        pingTimer = window.setInterval(() => {
+          try {
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping');
+          } catch (_e) {}
+        }, 20000);
+      };
+
+      ws.onmessage = (event) => {
+        if (disposed) return;
+        setLogs(prev => [...prev, event.data]);
+        if (event.data.includes('[SUCCESS]')) {
+          setIsRunning(false);
+        }
+      };
+
+      ws.onerror = () => {
+        if (disposed) return;
+        appendLog('[Error] Failed to connect to Engine.');
+      };
+
+      ws.onclose = () => {
+        if (disposed) return;
+        appendLog('[System] Disconnected.');
+        scheduleReconnect();
+      };
+    };
+
+    connect();
 
     return () => {
-      clearInterval(ping);
-      ws.close();
+      disposed = true;
+      clearReconnectTimer();
+      clearPingTimer();
+      try {
+        ws?.close();
+      } catch (_e) {}
     };
-  }, [backendWsUrl, wsRetry]);
+  }, [backendWsUrl]);
 
   useEffect(() => {
     // 只有当允许自动滚动时，才滚动到底部
