@@ -25,7 +25,11 @@ export default function App() {
   const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.openai.com/v1');
   const [vlmBaseUrl, setVlmBaseUrl] = useState('https://api.openai.com/v1');
   
-  const [backendPort, setBackendPort] = useState<string>('8000'); // 默认回退
+  const [backendHttpBase, setBackendHttpBase] = useState<string>('');
+  const [backendWsUrl, setBackendWsUrl] = useState<string>(() => {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${wsProtocol}://${window.location.host}/ws`;
+  });
   const wsRef = useRef<WebSocket | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -34,15 +38,15 @@ export default function App() {
     if (window.electronAPI) {
       window.electronAPI.onBackendPort((port: string) => {
         setLogs(prev => [...prev, `[System] Discovered Backend on port ${port}`]);
-        setBackendPort(port);
+        setBackendHttpBase(`http://127.0.0.1:${port}`);
+        setBackendWsUrl(`ws://127.0.0.1:${port}/ws`);
       });
     }
   }, []);
 
   useEffect(() => {
-    // 根据当前已知的 backendPort 连接 WebSocket
-    const ws = new WebSocket(`ws://127.0.0.1:${backendPort}/ws`);
-    ws.onopen = () => setLogs(prev => [...prev, `[System] Connected to Python Engine on :${backendPort}.`]);
+    const ws = new WebSocket(backendWsUrl);
+    ws.onopen = () => setLogs(prev => [...prev, `[System] Connected to Python Engine.`]);
     ws.onmessage = (event) => {
       setLogs(prev => [...prev, event.data]);
       if (event.data.includes('[SUCCESS]')) {
@@ -54,7 +58,7 @@ export default function App() {
     
     wsRef.current = ws;
     return () => ws.close();
-  }, [backendPort]);
+  }, [backendWsUrl]);
 
   useEffect(() => {
     // 自动滚动到最新日志
@@ -67,7 +71,7 @@ export default function App() {
     setLogs(prev => [...prev, '\n--- Starting New Task ---']);
     
     try {
-      const response = await fetch(`http://127.0.0.1:${backendPort}/api/task/start`, {
+      const response = await fetch(`${backendHttpBase}/api/task/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
