@@ -32,7 +32,8 @@ export default function App() {
   });
   const [wsRetry, setWsRetry] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
-  const logEndRef = useRef<HTMLDivElement>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const [isAutoScroll, setIsAutoScroll] = useState(true);
 
   useEffect(() => {
     // 监听 Electron 传来的动态端口
@@ -77,9 +78,20 @@ export default function App() {
   }, [backendWsUrl, wsRetry]);
 
   useEffect(() => {
-    // 自动滚动到最新日志
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
+    // 只有当允许自动滚动时，才滚动到底部
+    if (isAutoScroll && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs, isAutoScroll]);
+
+  const handleScroll = () => {
+    if (logContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current;
+      // 如果用户向上滚动了超过 10px，就暂停自动滚动
+      const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 10;
+      setIsAutoScroll(isAtBottom);
+    }
+  };
 
   const handleStartTask = async () => {
     if (isRunning) return;
@@ -285,18 +297,31 @@ export default function App() {
               </div>
             </div>
             
-            <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 text-gray-300 h-64 flex flex-col">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white shrink-0">
-                <Terminal className="w-5 h-5 text-green-400" />
-                执行日志 (Console)
+            <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 text-gray-300 h-64 flex flex-col relative">
+              <h2 className="text-lg font-semibold mb-4 flex items-center justify-between text-white shrink-0">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-5 h-5 text-green-400" />
+                  执行日志 (Console)
+                </div>
+                {!isAutoScroll && (
+                  <button 
+                    onClick={() => setIsAutoScroll(true)}
+                    className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-gray-300"
+                  >
+                    返回底部
+                  </button>
+                )}
               </h2>
-              <div className="flex-1 overflow-y-auto font-mono text-sm space-y-1 p-2 bg-black/50 rounded border border-gray-700">
+              <div 
+                ref={logContainerRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto font-mono text-sm space-y-1 p-2 bg-black/50 rounded border border-gray-700 scroll-smooth"
+              >
                 {logs.map((log, i) => (
                   <div key={i} className={`${log.includes('[Error]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : 'text-gray-300'}`}>
                     {log}
                   </div>
                 ))}
-                <div ref={logEndRef} />
               </div>
             </div>
 
