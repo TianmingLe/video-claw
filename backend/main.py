@@ -117,7 +117,25 @@ async def real_pipeline_execution(config: dict):
         await scraper.close_browser()
         await manager.broadcast(f"[INFO] 爬虫资源已释放，任务结束。")
 
+import uvicorn
+import socket
+
+def get_free_port(default_port=8000):
+    """尝试获取默认端口，如果被占用则寻找一个空闲端口"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", default_port))
+        s.close()
+        return default_port
+    except OSError:
+        s.close()
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
 if __name__ == "__main__":
-    import uvicorn
-    # 为了方便桌面端，MVP 阶段绑定固定端口 8000
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    port = get_free_port(8000)
+    print(f"Starting server on port {port}")
+    uvicorn.run(app, host="127.0.0.1", port=port)

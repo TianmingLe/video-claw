@@ -13,11 +13,21 @@ function startPythonBackend() {
   const scriptPath = path.join(__dirname, '..', '..', 'backend', 'main.py');
   
   pythonProcess = spawn(pythonPath, [scriptPath], {
-    cwd: path.join(__dirname, '..', '..') // 确保在 workspace 根目录运行
+    cwd: path.join(__dirname, '..', '..'), // 确保在 workspace 根目录运行
+    env: { ...process.env, PYTHONUNBUFFERED: '1' }
   });
 
   pythonProcess.stdout.on('data', (data) => {
-    console.log(`[Python] ${data.toString()}`);
+    const output = data.toString();
+    console.log(`[Python] ${output}`);
+    
+    // 解析 Python 后端分配的端口
+    const portMatch = output.match(/Starting server on port (\d+)/);
+    if (portMatch && mainWindow) {
+      const port = portMatch[1];
+      // 通过 webContents 将端口号发送给前端 React
+      mainWindow.webContents.send('backend-port', port);
+    }
   });
 
   pythonProcess.stderr.on('data', (data) => {
@@ -34,8 +44,9 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 

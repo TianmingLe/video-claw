@@ -3,17 +3,35 @@ import {
   Search, Settings, Play, Database, BarChart, Terminal, Download, Bot, ShieldAlert
 } from 'lucide-react';
 
+// 扩展全局 Window 接口以支持 TypeScript 编译
+declare global {
+  interface Window {
+    electronAPI: any;
+  }
+}
+
 export default function App() {
   const [logs, setLogs] = useState<string[]>(['[System] OmniScraper Pro Initialized.']);
   const [isRunning, setIsRunning] = useState(false);
   const [platform, setPlatform] = useState('抖音');
+  const [backendPort, setBackendPort] = useState<string>('8000'); // 默认回退
   const wsRef = useRef<WebSocket | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 连接到 Python 后端的 WebSocket
-    const ws = new WebSocket('ws://127.0.0.1:8000/ws');
-    ws.onopen = () => setLogs(prev => [...prev, '[System] Connected to Python Engine.']);
+    // 监听 Electron 传来的动态端口
+    if (window.electronAPI) {
+      window.electronAPI.onBackendPort((port: string) => {
+        setLogs(prev => [...prev, `[System] Discovered Backend on port ${port}`]);
+        setBackendPort(port);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    // 根据当前已知的 backendPort 连接 WebSocket
+    const ws = new WebSocket(`ws://127.0.0.1:${backendPort}/ws`);
+    ws.onopen = () => setLogs(prev => [...prev, `[System] Connected to Python Engine on :${backendPort}.`]);
     ws.onmessage = (event) => {
       setLogs(prev => [...prev, event.data]);
       if (event.data.includes('[SUCCESS]')) {
@@ -25,7 +43,7 @@ export default function App() {
     
     wsRef.current = ws;
     return () => ws.close();
-  }, []);
+  }, [backendPort]);
 
   useEffect(() => {
     // 自动滚动到最新日志
@@ -38,10 +56,10 @@ export default function App() {
     setLogs(prev => [...prev, '\n--- Starting New Task ---']);
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/task/start', {
+      const response = await fetch(`http://127.0.0.1:${backendPort}/api/task/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform, depth: 100 })
+        body: JSON.stringify({ platform, keyword: "Python教程", depth: 2 })
       });
       if (!response.ok) throw new Error('Network response was not ok');
     } catch (err) {
