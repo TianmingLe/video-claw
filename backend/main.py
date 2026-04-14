@@ -5,7 +5,7 @@ from typing import List
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
-from backend.database.models import get_engine, create_tables, Video, Thread
+from backend.database.models import get_engine, create_tables, Video, Thread, Summary
 from backend.scrapers.douyin import DouyinScraper
 from backend.pipeline.run_analysis import AnalysisPipeline
 
@@ -61,10 +61,22 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+@app.get("/api/reports")
+async def get_reports(limit: int = 10):
+    with SessionLocal() as db:
+        reports = db.query(Summary).order_by(Summary.created_at.desc()).limit(limit).all()
+        return [
+            {
+                "id": r.id,
+                "video_id": r.video_id,
+                "markdown": r.report_markdown,
+                "created_at": r.created_at
+            }
+            for r in reports if r.report_markdown
+        ]
+
 @app.post("/api/task/start")
 async def start_task(config: dict):
-    """
-    触发任务接口，通过后台任务执行 Pipeline，并使用 WS 广播日志。
     """
     global task_running
     if task_running:

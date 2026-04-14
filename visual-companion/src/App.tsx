@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
-  Search, Settings, Play, Database, BarChart, Terminal, Download, Bot, ShieldAlert
+  Search, Settings, Play, Database, BarChart, Terminal, Download, Bot, ShieldAlert, FileText, X
 } from 'lucide-react';
 
 // 扩展全局 Window 接口以支持 TypeScript 编译
@@ -30,6 +32,12 @@ export default function App() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     return `${wsProtocol}://${window.location.host}/ws`;
   });
+  
+  // 报告数据状态
+  const [reports, setReports] = useState<any[]>([]);
+  const [showReports, setShowReports] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<any | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [isAutoScroll, setIsAutoScroll] = useState(true);
@@ -154,7 +162,24 @@ export default function App() {
     }
   };
 
-  const handleStartTask = async () => {
+  const fetchReports = async () => {
+    if (!backendHttpBase) return;
+    try {
+      const response = await fetch(`${backendHttpBase}/api/reports?limit=20`);
+      if (response.ok) {
+        const data = await response.json();
+        setReports(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch reports", err);
+    }
+  };
+
+  useEffect(() => {
+    if (showReports) {
+      fetchReports();
+    }
+  }, [showReports, backendHttpBase]);
     if (isRunning) return;
     setIsRunning(true);
     setLogs(prev => [...prev, '\n--- Starting New Task ---']);
@@ -197,6 +222,13 @@ export default function App() {
             </div>
           </div>
           <div className="flex gap-4">
+            <button 
+              onClick={() => setShowReports(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors shadow-sm"
+            >
+              <FileText className="w-4 h-4" />
+              历史报告
+            </button>
             <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
               <Settings className="w-4 h-4" />
               全局设置
@@ -411,6 +443,71 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* 报告预览弹窗 */}
+      {showReports && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex overflow-hidden border border-gray-200 animate-in fade-in zoom-in duration-200">
+            {/* 左侧列表 */}
+            <div className="w-1/3 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
+              <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <Database className="w-4 h-4 text-blue-500" /> 
+                  分析报告库 ({reports.length})
+                </h3>
+                <button onClick={() => setShowReports(false)} className="p-1 hover:bg-gray-100 rounded text-gray-500">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {reports.length === 0 ? (
+                  <div className="text-sm text-gray-500 text-center mt-10">暂无生成的分析报告</div>
+                ) : (
+                  reports.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => setSelectedReport(r)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all ${selectedReport?.id === r.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white border-gray-100 hover:border-blue-100 hover:bg-gray-50'}`}
+                    >
+                      <div className="text-xs text-gray-400 mb-1 flex justify-between">
+                        <span>Video ID: {r.video_id}</span>
+                        <span>#{r.id}</span>
+                      </div>
+                      <div className="text-sm font-medium text-gray-800 line-clamp-2">
+                        {r.markdown.split('\n')[0].replace(/#+\s*/, '') || '无标题报告'}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            {/* 右侧预览 */}
+            <div className="w-2/3 bg-white h-full flex flex-col">
+              <div className="p-4 border-b border-gray-100 bg-white flex justify-between items-center shadow-sm z-10">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-green-500" />
+                  Markdown 报告预览
+                </h3>
+                {selectedReport && (
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-medium">已入库</span>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50 prose prose-sm max-w-none prose-headings:text-gray-800 prose-a:text-blue-600 prose-code:text-pink-600 prose-code:bg-pink-50 prose-code:px-1 prose-code:rounded">
+                {selectedReport ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {selectedReport.markdown}
+                  </ReactMarkdown>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-400">
+                    请在左侧选择一份报告进行预览
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
