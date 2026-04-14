@@ -28,7 +28,8 @@ class RealOpenAIClient(LLMClient):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2
+            temperature=0.2,
+            max_tokens=4096
         )
         
         raw_content = response.choices[0].message.content.strip()
@@ -49,6 +50,12 @@ class RealOpenAIClient(LLMClient):
             end_idx = cleaned_content.rfind('}')
             if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
                 cleaned_content = cleaned_content[start_idx:end_idx+1].strip()
+            else:
+                # Truncation case: we didn't find a complete pair of braces
+                raise RuntimeError(
+                    f"Model output was likely truncated due to max_tokens limits. "
+                    f"No complete JSON object found in response.\nRaw Response: {raw_content}"
+                )
         
         try:
             parsed_data = json.loads(cleaned_content)
