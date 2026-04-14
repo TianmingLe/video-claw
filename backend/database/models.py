@@ -18,6 +18,10 @@ class Video(Base):
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     
+    # Phase 2: 多模态字段
+    asr_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ocr_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
     threads: Mapped[List["Thread"]] = relationship(back_populates="video", cascade="all, delete-orphan")
     summary: Mapped["Summary"] = relationship(back_populates="video", cascade="all, delete-orphan", uselist=False)
 
@@ -40,6 +44,10 @@ class Summary(Base):
     video_id: Mapped[str] = mapped_column(ForeignKey("videos.id"))
     key_points_json: Mapped[str] = mapped_column(Text, default="[]")
     actionable_insights: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Phase 2: 报告与模型记录
+    report_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    model_name: Mapped[str] = mapped_column(String(50), default="unknown")
     
     video: Mapped["Video"] = relationship(back_populates="summary")
 

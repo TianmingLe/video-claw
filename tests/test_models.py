@@ -38,3 +38,16 @@ def test_video_thread_relationship(db_session):
     saved_video = db_session.query(Video).filter_by(id="test_v_2").first()
     assert len(saved_video.threads) == 1
     assert saved_video.threads[0].is_valuable is True
+
+def test_phase2_fields(db_session):
+    video = Video(id="test_v_3", platform="bilibili", url="url", title="T", author="A", asr_text="Hello", ocr_text="World")
+    summary = Summary(report_markdown="# Report", model_name="fake-model")
+    video.summary = summary
+    db_session.add(video)
+    db_session.commit()
+    
+    saved_video = db_session.query(Video).filter_by(id="test_v_3").first()
+    assert saved_video.asr_text == "Hello"
+    assert saved_video.ocr_text == "World"
+    assert saved_video.summary.report_markdown == "# Report"
+    assert saved_video.summary.model_name == "fake-model"
