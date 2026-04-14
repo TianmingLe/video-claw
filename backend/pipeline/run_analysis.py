@@ -1,30 +1,40 @@
 import json
+import os
 from sqlalchemy.orm import Session
-from backend.database.models import Video, Thread, Summary
 from backend.multimodal.asr import FakeASRProvider
 from backend.multimodal.ocr import FakeOCRProvider
-from backend.llm.client import FakeLLMClient
+from backend.llm.client import FakeLLMClient, RealOpenAIClient
 from backend.llm.analyzer import LLMAnalyzer
 from backend.llm.exporter import MarkdownExporter
+from backend.database.models import Video, Thread, Summary
 
 class AnalysisPipeline:
     def __init__(self, db_session: Session, config: dict = None):
         self.db = db_session
         self.config = config or {}
         
-        # 传递动态模型和密钥给具体的 Client/Provider (真实场景会根据配置初始化真实的 OpenAIClient)
-        # 这里我们将这些参数透传给 Fake Client 以模拟真实传参
         self.asr_provider = FakeASRProvider()
         self.ocr_provider = FakeOCRProvider(
             model=self.config.get("vlm_model"), 
             api_key=self.config.get("vlm_api_key"),
             base_url=self.config.get("vlm_base_url")
         )
-        self.llm_client = FakeLLMClient(
-            model_name=self.config.get("llm_model", "fake-gpt-4o-mini"),
-            api_key=self.config.get("llm_api_key"),
-            base_url=self.config.get("llm_base_url")
-        )
+        
+        # 智能路由：如果有真实 api key 则走 OpenAIClient
+        api_key = self.config.get("llm_api_key")
+        if api_key:
+            self.llm_client = RealOpenAIClient(
+                model_name=self.config.get("llm_model", "gpt-4o-mini"),
+                api_key=api_key,
+                base_url=self.config.get("llm_base_url", "https://api.openai.com/v1")
+            )
+        else:
+            self.llm_client = FakeLLMClient(
+                model_name=self.config.get("llm_model", "fake-gpt-4o-mini"),
+                api_key=api_key,
+                base_url=self.config.get("llm_base_url")
+            )
+            
         self.analyzer = LLMAnalyzer(self.llm_client)
         self.exporter = MarkdownExporter()
 
