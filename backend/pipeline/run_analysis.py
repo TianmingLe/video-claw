@@ -60,9 +60,12 @@ class AnalysisPipeline:
         db_summary.model_name = self.llm_client.model_name
         self.db.commit()
 
-        # 5. 生成并保存 Markdown 报告
-        report_md = self.exporter.generate_report(video, threads, db_summary)
-        db_summary.report_markdown = report_md
-        self.db.commit()
-        
-        return report_md
+        try:
+            # 5. 生成并保存 Markdown 报告
+            report_md = self.exporter.generate_report(video, threads, db_summary)
+            db_summary.report_markdown = report_md
+            self.db.commit()
+            return report_md
+        except Exception as e:
+            self.db.rollback()
+            raise RuntimeError(f"Pipeline failed to generate or save report: {str(e)}")

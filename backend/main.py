@@ -1,3 +1,4 @@
+import os
 import asyncio
 import json
 from typing import List
@@ -18,8 +19,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 全局初始化 DB
-engine = get_engine("sqlite:///omniscraper_real.db")
+# 使用环境变量或默认路径配置 DB
+DB_PATH = os.getenv("DB_PATH", "sqlite:///omniscraper_real.db")
+engine = get_engine(DB_PATH)
 create_tables(engine)
 SessionLocal = sessionmaker(bind=engine)
 
@@ -75,6 +77,11 @@ async def real_pipeline_execution(config: dict):
     try:
         await manager.broadcast(f"[INFO] 正在搜索关键词 '{keyword}' (Top {depth})...")
         videos_data = await scraper.search_videos(keyword, depth)
+        
+        if not videos_data:
+            await manager.broadcast("[WARNING] 未找到任何视频数据，任务提前结束。")
+            return
+            
         await manager.broadcast(f"[SUCCESS] 找到 {len(videos_data)} 个视频，开始抓取评论并入库...")
         
         with SessionLocal() as db:

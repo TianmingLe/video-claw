@@ -44,6 +44,9 @@ class DouyinScraper(BaseScraper):
                 await self.page.wait_for_selector('ul li', timeout=5000)
                 items = await self.page.query_selector_all('ul li')
                 
+                if not items:
+                    raise Exception("No video items found on the page")
+                    
                 for idx, item in enumerate(items[:max_count]):
                     title_elem = await item.query_selector('a p')
                     title = await title_elem.inner_text() if title_elem else f"Mock Title {idx} for {keyword}"
