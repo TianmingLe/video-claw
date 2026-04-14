@@ -18,11 +18,11 @@ export default function App() {
   const [depth, setDepth] = useState(10);
   
   // AI 模型配置状态
-  const [llmModel, setLlmModel] = useState('deepseek-chat');
-  const [llmApiKey, setLlmApiKey] = useState('');
+  const [llmModel, setLlmModel] = useState('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B');
+  const [llmApiKey, setLlmApiKey] = useState('sk-wxnohcyzwvlelbjkjvxjgmmkwxldaolyemiawrcoodycwlez');
   const [vlmModel, setVlmModel] = useState('deepseek-ai/DeepSeek-V3');
   const [vlmApiKey, setVlmApiKey] = useState('');
-  const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.deepseek.com/v1');
+  const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.siliconflow.cn/v1');
   const [vlmBaseUrl, setVlmBaseUrl] = useState('https://api.siliconflow.cn/v1');
   
   const [backendHttpBase, setBackendHttpBase] = useState<string>('');
