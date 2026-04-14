@@ -180,6 +180,8 @@ export default function App() {
       fetchReports();
     }
   }, [showReports, backendHttpBase]);
+
+  const handleStartTask = async () => {
     if (isRunning) return;
     setIsRunning(true);
     setLogs(prev => [...prev, '\n--- Starting New Task ---']);
@@ -444,11 +446,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* 报告预览弹窗 */}
       {showReports && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
           <div className="bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex overflow-hidden border border-gray-200 animate-in fade-in zoom-in duration-200">
-            {/* 左侧列表 */}
             <div className="w-1/3 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
               <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -482,7 +482,6 @@ export default function App() {
               </div>
             </div>
             
-            {/* 右侧预览 */}
             <div className="w-2/3 bg-white h-full flex flex-col">
               <div className="p-4 border-b border-gray-100 bg-white flex justify-between items-center shadow-sm z-10">
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
