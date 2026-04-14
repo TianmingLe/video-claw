@@ -19,10 +19,36 @@ class RealOpenAIClient(LLMClient):
         self.model_name = model_name
         self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
         
+    def _extract_values_from_schema_hallucination(self, parsed_data: dict, schema: Type[T]) -> dict:
+        """
+        Extreme fallback: The model hallucinates an entire JSON Schema block with 'title', 'type', 
+        and nested values (sometimes inside 'default' or mixed). We recursively hunt for actual data.
+        """
+        extracted = {}
+        for field_name, field_info in schema.model_fields.items():
+            if field_name in parsed_data:
+                field_val = parsed_data[field_name]
+                # If the field value is a schema dict (has 'type' and 'title'), try to extract 'default' or assume it's garbage
+                if isinstance(field_val, dict) and "type" in field_val:
+                    if "default" in field_val:
+                        val = field_val["default"]
+                    elif "example" in field_val:
+                        val = field_val["example"]
+                    else:
+                        continue
+                else:
+                    val = field_val
+                
+                # Type coercion for common hallucinations (e.g. model output a comma separated string for a list)
+                expected_type = str(field_info.annotation)
+                if "list" in expected_type.lower() or "List" in expected_type:
+                    if isinstance(val, str):
+                        val = [s.strip() for s in val.split(",")]
+                
+                extracted[field_name] = val
+        return extracted
+
     def generate_structured(self, prompt: str, schema: Type[T]) -> T:
-        # Instead of sending the full JSON Schema which confuses DeepSeek R1 into 
-        # generating another JSON Schema, we send a simplified example format.
-        
         # Build a simple format string from the Pydantic schema fields
         fields_format = {}
         for field_name, field_info in schema.model_fields.items():
@@ -81,15 +107,12 @@ class RealOpenAIClient(LLMClient):
             
             # Model hallucination fallback: sometimes models wrap the actual data inside a "properties" key
             if isinstance(parsed_data, dict) and "properties" in parsed_data:
-                # Check if "properties" contains the keys we actually want for this schema
-                schema_keys = set(schema.model_fields.keys())
-                properties_keys = set(parsed_data["properties"].keys())
-                
-                # If there's a significant overlap between what we need and what's inside "properties",
-                # and it doesn't look like a pure type definition dictionary, unwrap it.
-                if len(schema_keys.intersection(properties_keys)) > 0:
-                    if all(not isinstance(v, dict) or "type" not in v for v in parsed_data["properties"].values()):
-                        parsed_data = parsed_data["properties"]
+                properties_dict = parsed_data["properties"]
+                # Try to extract the real values, whether they are direct values or nested inside a schema def
+                parsed_data = self._extract_values_from_schema_hallucination(properties_dict, schema)
+            elif isinstance(parsed_data, dict):
+                # Even without "properties", check if the root dict is hallucinated with "type" and "default"
+                parsed_data = self._extract_values_from_schema_hallucination(parsed_data, schema)
             
             return schema(**parsed_data)
         except json.JSONDecodeError as e:
