@@ -14,6 +14,15 @@ export default function App() {
   const [logs, setLogs] = useState<string[]>(['[System] OmniScraper Pro Initialized.']);
   const [isRunning, setIsRunning] = useState(false);
   const [platform, setPlatform] = useState('抖音');
+  const [keyword, setKeyword] = useState('Python教程\n自媒体运营');
+  const [depth, setDepth] = useState(10);
+  
+  // AI 模型配置状态
+  const [llmModel, setLlmModel] = useState('gpt-4o-mini');
+  const [llmApiKey, setLlmApiKey] = useState('');
+  const [vlmModel, setVlmModel] = useState('gpt-4o');
+  const [vlmApiKey, setVlmApiKey] = useState('');
+  
   const [backendPort, setBackendPort] = useState<string>('8000'); // 默认回退
   const wsRef = useRef<WebSocket | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -59,7 +68,15 @@ export default function App() {
       const response = await fetch(`http://127.0.0.1:${backendPort}/api/task/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform, keyword: "Python教程", depth: 2 })
+        body: JSON.stringify({ 
+          platform, 
+          keyword: keyword.split('\n')[0] || 'Python教程', 
+          depth: depth,
+          llm_model: llmModel,
+          llm_api_key: llmApiKey,
+          vlm_model: vlmModel,
+          vlm_api_key: vlmApiKey
+        })
       });
       if (!response.ok) throw new Error('Network response was not ok');
     } catch (err) {
@@ -136,14 +153,15 @@ export default function App() {
                   <textarea 
                     className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     rows={2}
-                    defaultValue="Python教程&#10;自媒体运营"
+                    value={keyword}
+                    onChange={e => setKeyword(e.target.value)}
                   />
                 </div>
                 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">视频采集数量</label>
-                    <input type="number" defaultValue={100} className="w-full border border-gray-300 rounded-lg p-2.5" />
+                    <input type="number" value={depth} onChange={e => setDepth(Number(e.target.value))} className="w-full border border-gray-300 rounded-lg p-2.5" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">一级评论深度</label>
@@ -153,6 +171,56 @@ export default function App() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">回复深度</label>
                     <input type="number" defaultValue={20} className="w-full border border-gray-300 rounded-lg p-2.5" />
                   </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Bot className="w-5 h-5 text-indigo-500" />
+                AI 模型与密钥配置
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">LLM 文本模型 (用于总结与分析)</label>
+                  <select 
+                    className="w-full border border-gray-300 rounded-lg p-2.5 mb-2 bg-white"
+                    value={llmModel}
+                    onChange={(e) => setLlmModel(e.target.value)}
+                  >
+                    <option value="gpt-4o-mini">GPT-4o Mini (推荐)</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
+                    <option value="deepseek-chat">DeepSeek Chat</option>
+                    <option value="custom">自定义模型</option>
+                  </select>
+                  <input 
+                    type="password" 
+                    placeholder="输入 LLM API Key (为空则使用环境配置或 Fake 模式)" 
+                    value={llmApiKey}
+                    onChange={(e) => setLlmApiKey(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-2.5 font-mono text-sm" 
+                  />
+                </div>
+                
+                <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VLM 多模态模型 (用于 OCR/画面理解)</label>
+                  <select 
+                    className="w-full border border-gray-300 rounded-lg p-2.5 mb-2 bg-white"
+                    value={vlmModel}
+                    onChange={(e) => setVlmModel(e.target.value)}
+                  >
+                    <option value="gpt-4o">GPT-4o (Vision)</option>
+                    <option value="claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
+                    <option value="custom">自定义模型</option>
+                  </select>
+                  <input 
+                    type="password" 
+                    placeholder="输入 VLM API Key (为空则使用环境配置或 Fake 模式)" 
+                    value={vlmApiKey}
+                    onChange={(e) => setVlmApiKey(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg p-2.5 font-mono text-sm" 
+                  />
                 </div>
               </div>
             </div>

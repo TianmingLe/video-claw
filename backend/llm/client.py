@@ -11,8 +11,9 @@ class LLMClient(ABC):
         pass
 
 class FakeLLMClient(LLMClient):
-    def __init__(self, model_name: str = "fake-gpt-4o-mini"):
-        self.model_name = model_name
+    def __init__(self, model_name: str = "fake-gpt-4o-mini", api_key: str = None):
+        self.model_name = model_name or "fake-gpt-4o-mini"
+        self.api_key = api_key
         
     def generate_structured(self, prompt: str, schema: Type[T]) -> T:
         """根据 schema 类名返回硬编码的模拟数据"""

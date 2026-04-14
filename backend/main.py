@@ -85,7 +85,8 @@ async def real_pipeline_execution(config: dict):
         await manager.broadcast(f"[SUCCESS] 找到 {len(videos_data)} 个视频，开始抓取评论并入库...")
         
         with SessionLocal() as db:
-            pipeline = AnalysisPipeline(db)
+            # 传递整个 config 进入 Pipeline，使得内部能感知到 LLM/VLM 配置
+            pipeline = AnalysisPipeline(db, config=config)
             
             for i, v_data in enumerate(videos_data):
                 await manager.broadcast(f"[PROGRESS] 处理视频 {i+1}/{len(videos_data)}: {v_data['title']}")
