@@ -79,11 +79,17 @@ class RealOpenAIClient(LLMClient):
         try:
             parsed_data = json.loads(cleaned_content)
             
-            # Model hallucination fallback: sometimes models output the schema definition instead of the data object.
-            if isinstance(parsed_data, dict) and "properties" in parsed_data and "type" not in parsed_data.get("properties", {}):
-                # Only fallback if "properties" looks like it holds actual data rather than type definitions
-                if all(not isinstance(v, dict) or "type" not in v for v in parsed_data["properties"].values()):
-                    parsed_data = parsed_data["properties"]
+            # Model hallucination fallback: sometimes models wrap the actual data inside a "properties" key
+            if isinstance(parsed_data, dict) and "properties" in parsed_data:
+                # Check if "properties" contains the keys we actually want for this schema
+                schema_keys = set(schema.model_fields.keys())
+                properties_keys = set(parsed_data["properties"].keys())
+                
+                # If there's a significant overlap between what we need and what's inside "properties",
+                # and it doesn't look like a pure type definition dictionary, unwrap it.
+                if len(schema_keys.intersection(properties_keys)) > 0:
+                    if all(not isinstance(v, dict) or "type" not in v for v in parsed_data["properties"].values()):
+                        parsed_data = parsed_data["properties"]
             
             return schema(**parsed_data)
         except json.JSONDecodeError as e:
