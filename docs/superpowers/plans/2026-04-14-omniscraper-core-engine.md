@@ -17,7 +17,7 @@
 - Create: `backend/database/models.py`
 - Create: `tests/test_models.py`
 
-- [ ] **Step 1: 创建依赖文件**
+- [x] **Step 1: 创建依赖文件**
 
 ```text
 # requirements.txt
@@ -27,7 +27,7 @@ pytest-asyncio>=0.21.0
 playwright>=1.40.0
 ```
 
-- [ ] **Step 2: 编写数据库 ORM 模型代码**
+- [x] **Step 2: 编写数据库 ORM 模型代码**
 
 创建 `backend/database/models.py`，定义 `Video`, `Thread`, `Summary` 等核心表结构。
 
@@ -84,7 +84,7 @@ def create_tables(engine):
     Base.metadata.create_all(engine)
 ```
 
-- [ ] **Step 3: 编写失败测试**
+- [x] **Step 3: 编写失败测试**
 
 创建 `tests/test_models.py`，用于验证模型关系。
 
@@ -131,7 +131,7 @@ def test_video_thread_relationship(db_session):
     assert saved_video.threads[0].is_valuable is True
 ```
 
-- [ ] **Step 4: 运行测试并安装依赖**
+- [x] **Step 4: 运行测试并安装依赖**
 
 执行命令安装依赖并运行测试：
 ```bash
@@ -140,7 +140,7 @@ pytest tests/test_models.py -v
 ```
 Expected: PASS
 
-- [ ] **Step 5: 提交代码**
+- [x] **Step 5: 提交代码**
 
 ```bash
 git init
@@ -156,7 +156,7 @@ git commit -m "feat: setup project structure and database ORM models"
 - Create: `backend/middleware/anti_bot.py`
 - Create: `tests/test_anti_bot.py`
 
-- [ ] **Step 1: 编写防风控中间件测试**
+- [x] **Step 1: 编写防风控中间件测试**
 
 创建 `tests/test_anti_bot.py`
 ```python
@@ -182,7 +182,7 @@ async def test_random_delay_special_forces_mode():
     assert 0.1 <= duration <= 0.6 # special_forces 模式更短
 ```
 
-- [ ] **Step 2: 编写中间件实现代码**
+- [x] **Step 2: 编写中间件实现代码**
 
 创建 `backend/middleware/anti_bot.py`
 ```python
@@ -227,14 +227,14 @@ class AntiBotController:
         return current_depth < actual_max
 ```
 
-- [ ] **Step 3: 运行中间件测试**
+- [x] **Step 3: 运行中间件测试**
 
 ```bash
 pytest tests/test_anti_bot.py -v
 ```
 Expected: PASS
 
-- [ ] **Step 4: 提交代码**
+- [x] **Step 4: 提交代码**
 
 ```bash
 git add backend/middleware/anti_bot.py tests/test_anti_bot.py

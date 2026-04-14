@@ -1,16 +1,14 @@
-import React from 'react';
-import { 
-  Search, 
-  Settings, 
-  Play, 
-  Clock, 
-  FileJson, 
-  FileSpreadsheet, 
+import {
+  Search,
+  Settings,
+  Play,
+  Clock,
+  FileJson,
+  FileSpreadsheet,
   Database,
   BarChart,
   Terminal,
   Download,
-  MessageSquare,
   Bot,
   ShieldAlert,
   Video
