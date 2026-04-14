@@ -1,20 +1,55 @@
+import { useState, useEffect, useRef } from 'react';
 import {
-  Search,
-  Settings,
-  Play,
-  Clock,
-  FileJson,
-  FileSpreadsheet,
-  Database,
-  BarChart,
-  Terminal,
-  Download,
-  Bot,
-  ShieldAlert,
-  Video
+  Search, Settings, Play, Database, BarChart, Terminal, Download, Bot, ShieldAlert
 } from 'lucide-react';
 
 export default function App() {
+  const [logs, setLogs] = useState<string[]>(['[System] OmniScraper Pro Initialized.']);
+  const [isRunning, setIsRunning] = useState(false);
+  const [platform, setPlatform] = useState('抖音');
+  const wsRef = useRef<WebSocket | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // 连接到 Python 后端的 WebSocket
+    const ws = new WebSocket('ws://127.0.0.1:8000/ws');
+    ws.onopen = () => setLogs(prev => [...prev, '[System] Connected to Python Engine.']);
+    ws.onmessage = (event) => {
+      setLogs(prev => [...prev, event.data]);
+      if (event.data.includes('[SUCCESS]')) {
+        setIsRunning(false);
+      }
+    };
+    ws.onerror = () => setLogs(prev => [...prev, '[Error] Failed to connect to Engine.']);
+    ws.onclose = () => setLogs(prev => [...prev, '[System] Disconnected.']);
+    
+    wsRef.current = ws;
+    return () => ws.close();
+  }, []);
+
+  useEffect(() => {
+    // 自动滚动到最新日志
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  const handleStartTask = async () => {
+    if (isRunning) return;
+    setIsRunning(true);
+    setLogs(prev => [...prev, '\n--- Starting New Task ---']);
+    
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/task/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, depth: 100 })
+      });
+      if (!response.ok) throw new Error('Network response was not ok');
+    } catch (err) {
+      setLogs(prev => [...prev, `[Error] Failed to trigger task: ${err}`]);
+      setIsRunning(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -34,15 +69,18 @@ export default function App() {
               <Settings className="w-4 h-4" />
               全局设置
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+            <button 
+              onClick={handleStartTask}
+              disabled={isRunning}
+              className={`flex items-center gap-2 px-4 py-2 ${isRunning ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg transition-colors shadow-sm`}
+            >
               <Play className="w-4 h-4" />
-              新建任务
+              {isRunning ? '任务执行中...' : '新建任务'}
             </button>
           </div>
         </header>
 
         <div className="grid grid-cols-3 gap-6">
-          {/* 左侧：任务配置 */}
           <div className="col-span-2 space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold mb-4 flex items-center justify-between">
@@ -60,10 +98,16 @@ export default function App() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">目标平台</label>
                   <div className="flex gap-3">
-                    {['抖音', '小红书', 'Bilibili', 'YouTube', '快手'].map(platform => (
-                      <label key={platform} className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="platform" defaultChecked={platform === '抖音'} className="text-blue-600" />
-                        <span className="text-sm">{platform}</span>
+                    {['抖音', '小红书', 'Bilibili', 'YouTube', '快手'].map(p => (
+                      <label key={p} className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input 
+                          type="radio" 
+                          name="platform" 
+                          checked={platform === p} 
+                          onChange={() => setPlatform(p)}
+                          className="text-blue-600" 
+                        />
+                        <span className="text-sm">{p}</span>
                       </label>
                     ))}
                   </div>
@@ -80,7 +124,7 @@ export default function App() {
                 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">视频采集数量 (Top N)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">视频采集数量</label>
                     <input type="number" defaultValue={100} className="w-full border border-gray-300 rounded-lg p-2.5" />
                   </div>
                   <div>
@@ -88,77 +132,30 @@ export default function App() {
                     <input type="number" defaultValue={200} className="w-full border border-gray-300 rounded-lg p-2.5" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">每条回复深度</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">回复深度</label>
                     <input type="number" defaultValue={20} className="w-full border border-gray-300 rounded-lg p-2.5" />
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">注：设置过大的采集深度会成倍增加耗时，系统会自动在请求间加入随机延迟以避免触发平台风控。</p>
               </div>
             </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Bot className="w-5 h-5 text-purple-500" />
-                AI 分析与多模态配置
+            
+            <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 text-gray-300 h-64 flex flex-col">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white shrink-0">
+                <Terminal className="w-5 h-5 text-green-400" />
+                执行日志 (Console)
               </h2>
-              
-              <div className="space-y-4">
-                <div className="p-4 bg-purple-50 rounded-lg border border-purple-100">
-                  <h3 className="font-medium text-purple-900 mb-2">文本价值判定与总结 (LLM)</h3>
-                  <div className="flex gap-4 mb-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="llm" className="text-purple-600" defaultChecked />
-                      <span className="text-sm">OpenAI 兼容接口</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer opacity-50">
-                      <input type="radio" name="llm" className="text-purple-600" disabled />
-                      <span className="text-sm">OpenClaw 预留</span>
-                    </label>
+              <div className="flex-1 overflow-y-auto font-mono text-sm space-y-1 p-2 bg-black/50 rounded border border-gray-700">
+                {logs.map((log, i) => (
+                  <div key={i} className={`${log.includes('[Error]') ? 'text-red-400' : log.includes('[SUCCESS]') ? 'text-green-400' : 'text-gray-300'}`}>
+                    {log}
                   </div>
-                  <input 
-                    type="text" 
-                    className="w-full border border-gray-300 rounded-md p-2 text-sm mb-2"
-                    placeholder="API Base URL (e.g. https://api.openai.com/v1)"
-                  />
-                  <input 
-                    type="password" 
-                    className="w-full border border-gray-300 rounded-md p-2 text-sm"
-                    placeholder="API Key"
-                  />
-                </div>
-
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <h3 className="font-medium text-blue-900 mb-2">视频内容解析策略</h3>
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" className="text-blue-600 rounded" defaultChecked />
-                      <span className="text-sm font-medium">音频转文本 (ASR)</span>
-                      <span className="text-xs text-gray-500 ml-2">- 提取视频旁白/对话</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input type="checkbox" className="text-blue-600 rounded" defaultChecked />
-                      <span className="text-sm font-medium">画面文字提取 (OCR)</span>
-                      <span className="text-xs text-gray-500 ml-2">- 识别视频画面中的字幕或PPT文字</span>
-                    </label>
-                    <div className="pt-2 border-t border-blue-200">
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" className="text-blue-600 rounded" />
-                        <span className="text-sm font-medium text-blue-800 flex items-center gap-1">
-                          <Video className="w-4 h-4" /> 视频多模态理解大模型 (VLM)
-                        </span>
-                        <span className="text-xs bg-blue-200 text-blue-800 px-1.5 rounded ml-2">Beta</span>
-                      </label>
-                      <p className="text-xs text-gray-500 ml-6 mt-1">
-                        (预留接口) 接入如 GPT-4V/Gemini/Qwen-VL 等多模态模型，让 AI 直接"看懂"视频画面动作与场景。当前暂不处理，留作二次开发。
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                ))}
+                <div ref={logEndRef} />
               </div>
             </div>
+
           </div>
 
-          {/* 右侧：输出与状态 */}
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -170,23 +167,6 @@ export default function App() {
                   <Database className="w-5 h-5 text-gray-500" />
                   <div className="flex-1">
                     <div className="font-medium text-sm">SQLite 数据库</div>
-                    <div className="text-xs text-gray-500">结构化存储，支持关联查询</div>
-                  </div>
-                  <input type="checkbox" defaultChecked className="text-blue-600 rounded" />
-                </label>
-                <label className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <FileSpreadsheet className="w-5 h-5 text-green-600" />
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">Excel/CSV 导出</div>
-                    <div className="text-xs text-gray-500">便于人工阅读和二次处理</div>
-                  </div>
-                  <input type="checkbox" defaultChecked className="text-blue-600 rounded" />
-                </label>
-                <label className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <FileJson className="w-5 h-5 text-yellow-600" />
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">JSON 序列化</div>
-                    <div className="text-xs text-gray-500">完整嵌套对话数据</div>
                   </div>
                   <input type="checkbox" defaultChecked className="text-blue-600 rounded" />
                 </label>
@@ -194,33 +174,9 @@ export default function App() {
                   <BarChart className="w-5 h-5 text-blue-600" />
                   <div className="flex-1">
                     <div className="font-medium text-sm">Markdown 分析报告</div>
-                    <div className="text-xs text-gray-500">包含 AI 总结的干货输出</div>
                   </div>
                   <input type="checkbox" defaultChecked className="text-blue-600 rounded" />
                 </label>
-              </div>
-            </div>
-
-            <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 text-gray-300">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-white">
-                <Terminal className="w-5 h-5 text-gray-400" />
-                运行方式
-              </h2>
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between p-2 hover:bg-gray-800 rounded">
-                  <span>Web 面板执行</span>
-                  <span className="text-green-400">● 活跃</span>
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-800 rounded">
-                  <span>CLI 命令行</span>
-                  <span className="text-gray-500">待命</span>
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-800 rounded">
-                  <span className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" /> 定时任务 (Cron)
-                  </span>
-                  <button className="text-blue-400 hover:text-blue-300 text-xs border border-blue-400/30 px-2 py-1 rounded">配置</button>
-                </div>
               </div>
             </div>
           </div>
