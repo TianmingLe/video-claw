@@ -20,7 +20,12 @@ class RealOpenAIClient(LLMClient):
         self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
         
     def generate_structured(self, prompt: str, schema: Type[T]) -> T:
-        system_prompt = f"You are a professional data analyst. You MUST respond with ONLY valid JSON that matches the following schema:\n{schema.schema_json()}\nDo not wrap the JSON in markdown code blocks."
+        system_prompt = (
+            f"You are a professional data analyst. You MUST respond with ONLY valid JSON "
+            f"that matches the structure defined by the following JSON Schema:\n{schema.schema_json()}\n"
+            f"IMPORTANT: Do NOT output a JSON Schema definition (do not include 'properties', 'type', or 'required' at the root). "
+            f"Output the ACTUAL data object directly. Do not wrap the JSON in markdown code blocks."
+        )
         
         response = self.client.chat.completions.create(
             model=self.model_name,
@@ -59,6 +64,13 @@ class RealOpenAIClient(LLMClient):
         
         try:
             parsed_data = json.loads(cleaned_content)
+            
+            # Model hallucination fallback: sometimes models output the schema definition instead of the data object.
+            if isinstance(parsed_data, dict) and "properties" in parsed_data and "type" not in parsed_data.get("properties", {}):
+                # Only fallback if "properties" looks like it holds actual data rather than type definitions
+                if all(not isinstance(v, dict) or "type" not in v for v in parsed_data["properties"].values()):
+                    parsed_data = parsed_data["properties"]
+            
             return schema(**parsed_data)
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Failed to parse LLM JSON response: {str(e)}\nRaw Response: {raw_content}")
