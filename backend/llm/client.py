@@ -20,11 +20,25 @@ class RealOpenAIClient(LLMClient):
         self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
         
     def generate_structured(self, prompt: str, schema: Type[T]) -> T:
+        # Instead of sending the full JSON Schema which confuses DeepSeek R1 into 
+        # generating another JSON Schema, we send a simplified example format.
+        
+        # Build a simple format string from the Pydantic schema fields
+        fields_format = {}
+        for field_name, field_info in schema.model_fields.items():
+            field_type = str(field_info.annotation).replace("<class '", "").replace("'>", "")
+            fields_format[field_name] = f"<{field_type}>"
+            
+        format_example = json.dumps(fields_format, indent=2)
+        
         system_prompt = (
-            f"You are a professional data analyst. You MUST respond with ONLY valid JSON "
-            f"that matches the structure defined by the following JSON Schema:\n{schema.schema_json()}\n"
-            f"IMPORTANT: Do NOT output a JSON Schema definition (do not include 'properties', 'type', or 'required' at the root). "
-            f"Output the ACTUAL data object directly. Do not wrap the JSON in markdown code blocks."
+            f"You are a professional data analyst. You MUST respond with ONLY a raw JSON object.\n"
+            f"Your output must exactly match this JSON structure:\n"
+            f"{format_example}\n\n"
+            f"IMPORTANT RULES:\n"
+            f"1. DO NOT output a JSON Schema definition (do NOT use 'properties', 'type', or 'required').\n"
+            f"2. DO NOT wrap the JSON in markdown code blocks like ```json ... ```. Just output the raw JSON.\n"
+            f"3. Fill in the actual analyzed values in place of the type placeholders."
         )
         
         response = self.client.chat.completions.create(
