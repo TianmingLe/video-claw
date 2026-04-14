@@ -57,8 +57,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             # 保持连接，等待客户端消息（如果需要双向通信）
-            data = await websocket.receive_text()
-            await manager.broadcast(f"Echo: {data}")
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
@@ -89,10 +88,15 @@ async def _real_pipeline_execution(config: dict):
     
     await manager.broadcast(f"[INFO] 初始化 {platform} Playwright 爬虫...")
     scraper = DouyinScraper()
-    await scraper.start_browser(headless=True)
-    await manager.broadcast("[INFO] 浏览器已启动，开始进入搜索页...")
     
     try:
+        try:
+            await asyncio.wait_for(scraper.start_browser(headless=True), timeout=30)
+        except Exception as e:
+            await manager.broadcast(f"[ERROR] 浏览器启动失败: {str(e)}")
+            await manager.broadcast("[HINT] 如果是缺少系统依赖，请在服务器执行: playwright install-deps chromium")
+            return
+        await manager.broadcast("[INFO] 浏览器已启动，开始进入搜索页...")
         await manager.broadcast(f"[INFO] 正在搜索关键词 '{keyword}' (Top {depth})...")
         videos_data = await scraper.search_videos(keyword, depth)
         

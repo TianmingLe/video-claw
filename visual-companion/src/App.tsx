@@ -64,7 +64,16 @@ export default function App() {
     };
     
     wsRef.current = ws;
-    return () => ws.close();
+    const ping = setInterval(() => {
+      try {
+        if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+      } catch (_e) {}
+    }, 20000);
+
+    return () => {
+      clearInterval(ping);
+      ws.close();
+    };
   }, [backendWsUrl, wsRetry]);
 
   useEffect(() => {
