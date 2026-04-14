@@ -30,6 +30,7 @@ export default function App() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     return `${wsProtocol}://${window.location.host}/ws`;
   });
+  const [wsRetry, setWsRetry] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -53,12 +54,18 @@ export default function App() {
         setIsRunning(false);
       }
     };
-    ws.onerror = () => setLogs(prev => [...prev, '[Error] Failed to connect to Engine.']);
-    ws.onclose = () => setLogs(prev => [...prev, '[System] Disconnected.']);
+    ws.onerror = () => {
+      setLogs(prev => [...prev, '[Error] Failed to connect to Engine.']);
+      setTimeout(() => setWsRetry(v => v + 1), 1500);
+    };
+    ws.onclose = () => {
+      setLogs(prev => [...prev, '[System] Disconnected.']);
+      setTimeout(() => setWsRetry(v => v + 1), 1500);
+    };
     
     wsRef.current = ws;
     return () => ws.close();
-  }, [backendWsUrl]);
+  }, [backendWsUrl, wsRetry]);
 
   useEffect(() => {
     // 自动滚动到最新日志

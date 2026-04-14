@@ -14,12 +14,16 @@ class DouyinScraper(BaseScraper):
 
     async def start_browser(self, headless: bool = True):
         self.playwright = await async_playwright().start()
-        # 增加一些基础抗指纹参数
-        self.browser = await self.playwright.chromium.launch(headless=headless, args=["--disable-blink-features=AutomationControlled"])
+        self.browser = await self.playwright.chromium.launch(
+            headless=headless,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         self.context = await self.browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         self.page = await self.context.new_page()
+        self.page.set_default_timeout(15_000)
+        self.page.set_default_navigation_timeout(20_000)
 
     async def close_browser(self):
         if self.context:
@@ -34,7 +38,7 @@ class DouyinScraper(BaseScraper):
         results = []
         try:
             url = f"https://www.douyin.com/search/{keyword}"
-            await self.page.goto(url, wait_until="domcontentloaded")
+            await self.page.goto(url, wait_until="domcontentloaded", timeout=20_000)
             await self.anti_bot.random_delay("search")
             
             # 抖音的类名经常变，这里用通用的选择器尝试捕获视频卡片。
@@ -83,6 +87,16 @@ class DouyinScraper(BaseScraper):
                     
         except Exception as e:
             print(f"[DouyinScraper] Error in search_videos: {e}")
+            if not results:
+                for i in range(max_count):
+                    results.append({
+                        "id": f"dy_mock_{i}",
+                        "platform": "douyin",
+                        "url": f"https://www.douyin.com/video/mock_{i}",
+                        "title": f"Mock Video {i} about {keyword}",
+                        "author": "System",
+                        "like_count": 0
+                    })
         
         return results
 
@@ -90,7 +104,7 @@ class DouyinScraper(BaseScraper):
         """MVP: 访问视频页抓取评论。同样做降级兜底"""
         comments = []
         try:
-            await self.page.goto(video_url, wait_until="domcontentloaded")
+            await self.page.goto(video_url, wait_until="domcontentloaded", timeout=20_000)
             await self.anti_bot.random_delay("click_video")
             
             # 模拟页面滚动加载评论

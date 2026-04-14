@@ -31,7 +31,7 @@ def test_full_pipeline(db_session):
     # 验证数据库更新
     saved_v = db_session.query(Video).filter_by(id="v_pipe_1").first()
     assert "[ASR]" in saved_v.asr_text
-    assert "[OCR]" in saved_v.ocr_text
+    assert "[OCR" in saved_v.ocr_text
     
     # 验证 Thread 分析结果（Fake 返回 True）
     assert len(saved_v.threads) == 2

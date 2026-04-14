@@ -38,13 +38,18 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: str):
+        dead: List[WebSocket] = []
         for connection in self.active_connections:
             try:
                 await connection.send_text(message)
             except Exception:
-                pass
+                dead.append(connection)
+        for d in dead:
+            self.disconnect(d)
 
 manager = ConnectionManager()
+task_lock = asyncio.Lock()
+task_running = False
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -62,10 +67,22 @@ async def start_task(config: dict):
     """
     触发任务接口，通过后台任务执行 Pipeline，并使用 WS 广播日志。
     """
+    global task_running
+    if task_running:
+        return {"status": "Task rejected", "reason": "Another task is running"}
     asyncio.create_task(real_pipeline_execution(config))
     return {"status": "Task started", "config": config}
 
 async def real_pipeline_execution(config: dict):
+    global task_running
+    async with task_lock:
+        task_running = True
+        try:
+            await _real_pipeline_execution(config)
+        finally:
+            task_running = False
+
+async def _real_pipeline_execution(config: dict):
     platform = config.get("platform", "抖音")
     keyword = config.get("keyword", "Python")
     depth = int(config.get("depth", 2))
@@ -73,6 +90,7 @@ async def real_pipeline_execution(config: dict):
     await manager.broadcast(f"[INFO] 初始化 {platform} Playwright 爬虫...")
     scraper = DouyinScraper()
     await scraper.start_browser(headless=True)
+    await manager.broadcast("[INFO] 浏览器已启动，开始进入搜索页...")
     
     try:
         await manager.broadcast(f"[INFO] 正在搜索关键词 '{keyword}' (Top {depth})...")
