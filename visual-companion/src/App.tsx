@@ -18,12 +18,12 @@ export default function App() {
   const [depth, setDepth] = useState(10);
   
   // AI 模型配置状态
-  const [llmModel, setLlmModel] = useState('gpt-4o-mini');
+  const [llmModel, setLlmModel] = useState('deepseek-chat');
   const [llmApiKey, setLlmApiKey] = useState('');
-  const [vlmModel, setVlmModel] = useState('gpt-4o');
+  const [vlmModel, setVlmModel] = useState('deepseek-ai/DeepSeek-V3');
   const [vlmApiKey, setVlmApiKey] = useState('');
-  const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.openai.com/v1');
-  const [vlmBaseUrl, setVlmBaseUrl] = useState('https://api.openai.com/v1');
+  const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.deepseek.com/v1');
+  const [vlmBaseUrl, setVlmBaseUrl] = useState('https://api.siliconflow.cn/v1');
   
   const [backendHttpBase, setBackendHttpBase] = useState<string>('');
   const [backendWsUrl, setBackendWsUrl] = useState<string>(() => {
@@ -288,22 +288,21 @@ export default function App() {
                     placeholder="选择或输入模型名称，例如: deepseek-chat"
                   />
                   <datalist id="llm-models">
-                    <option value="gpt-4o-mini">GPT-4o Mini (推荐)</option>
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Latest)</option>
-                    <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-                    <option value="deepseek-chat">DeepSeek Chat (V3)</option>
-                    <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
-                    <option value="qwen-turbo">Qwen Turbo</option>
-                    <option value="qwen-max">Qwen Max</option>
-                    <option value="glm-4">GLM-4 (智谱)</option>
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                    <option value="deepseek-chat">DeepSeek Chat (V3 官方)</option>
+                    <option value="deepseek-reasoner">DeepSeek Reasoner (R1 官方)</option>
+                    <option value="deepseek-ai/DeepSeek-V3">DeepSeek V3 (SiliconFlow 硅基流动)</option>
+                    <option value="deepseek-ai/DeepSeek-R1">DeepSeek R1 (SiliconFlow 硅基流动)</option>
+                    <option value="qwen-plus">Qwen Plus (阿里云百炼)</option>
+                    <option value="qwen-max">Qwen Max (阿里云百炼)</option>
+                    <option value="glm-4-plus">GLM-4-Plus (智谱)</option>
+                    <option value="moonshot-v1-8k">Moonshot (Kimi)</option>
+                    <option value="gpt-4o">GPT-4o (OpenAI)</option>
+                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
                   </datalist>
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     <input 
                       type="text" 
-                      placeholder="Base URL (例如: https://api.deepseek.com/v1)" 
+                      placeholder="Base URL (例: https://api.deepseek.com/v1 或 https://api.siliconflow.cn/v1)" 
                       value={llmBaseUrl}
                       onChange={(e) => setLlmBaseUrl(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg p-2 font-mono text-xs text-gray-600" 
@@ -328,20 +327,18 @@ export default function App() {
                     placeholder="选择或输入视觉模型，例如: gpt-4o"
                   />
                   <datalist id="vlm-models">
+                    <option value="Pro/OpenGVLab/InternVL2.5-78B">InternVL 2.5 78B (SiliconFlow 硅基流动)</option>
+                    <option value="OpenGVLab/InternVL2-26B">InternVL 2 26B (SiliconFlow 硅基流动)</option>
+                    <option value="qwen-vl-plus">Qwen VL Plus (阿里云百炼)</option>
+                    <option value="qwen-vl-max">Qwen VL Max (阿里云百炼)</option>
+                    <option value="glm-4v-plus">GLM-4V-Plus (智谱)</option>
                     <option value="gpt-4o">GPT-4o (Vision)</option>
-                    <option value="gpt-4-turbo">GPT-4 Turbo with Vision</option>
-                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                    <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                    <option value="qwen-vl-plus">Qwen VL Plus</option>
-                    <option value="qwen-vl-max">Qwen VL Max</option>
-                    <option value="glm-4v">GLM-4V (智谱)</option>
+                    <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Vision)</option>
                   </datalist>
                   <div className="grid grid-cols-2 gap-2">
                     <input 
                       type="text" 
-                      placeholder="Base URL (兼容 OpenAI API)" 
+                      placeholder="Base URL (例: https://api.siliconflow.cn/v1)" 
                       value={vlmBaseUrl}
                       onChange={(e) => setVlmBaseUrl(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg p-2 font-mono text-xs text-gray-600" 
