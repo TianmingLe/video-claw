@@ -37,8 +37,8 @@ class LLMClient(ABC):
                     extracted[field_name] = False # Safe default
                     
             elif "list" in expected_type.lower() or "List" in expected_type:
-                # Look for an array-like structure
-                match = re.search(rf'"{field_name}"\s*:\s*\[(.*?)\]', raw_content, re.DOTALL)
+                # Look for an array-like structure, optionally wrapped in quotes
+                match = re.search(rf'"{field_name}"\s*:\s*["\']?\s*\[(.*?)\]\s*["\']?', raw_content, re.DOTALL)
                 if match:
                     inner = match.group(1)
                     # Extract quoted strings from inside the brackets
