@@ -81,8 +81,10 @@ async def start_task(config: dict):
     触发任务接口，通过后台任务执行 Pipeline，并使用 WS 广播日志。
     """
     global task_running
-    if task_running:
+    # check if lock is already acquired without blocking
+    if task_lock.locked() or task_running:
         return {"status": "Task rejected", "reason": "Another task is running"}
+        
     asyncio.create_task(real_pipeline_execution(config))
     return {"status": "Task started", "config": config}
 

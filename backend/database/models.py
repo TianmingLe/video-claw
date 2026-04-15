@@ -52,7 +52,10 @@ class Summary(Base):
     video: Mapped["Video"] = relationship(back_populates="summary")
 
 def get_engine(db_path: str = "sqlite:///omniscraper.db"):
-    return create_engine(db_path)
+    return create_engine(
+        db_path, 
+        connect_args={"check_same_thread": False} if db_path.startswith("sqlite") else {}
+    )
 
 def create_tables(engine):
     Base.metadata.create_all(engine)
