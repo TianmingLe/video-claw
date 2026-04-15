@@ -116,8 +116,21 @@ export default function App() {
 
       ws.onmessage = (event) => {
         if (disposed) return;
-        setLogs(prev => [...prev, event.data]);
-        if (event.data.includes('[SUCCESS]')) {
+        setLogs(prev => {
+          const newLogs = [...prev, event.data];
+          // 如果日志过多，自动截断前 1000 条，防止 DOM 渲染卡死
+          if (newLogs.length > 5000) {
+            return newLogs.slice(newLogs.length - 5000);
+          }
+          return newLogs;
+        });
+        
+        // 识别任务结束标志：无论是完全成功，还是中途报错、没搜到数据、或是正常退出，只要出现以下关键字就解锁按钮
+        const msg = event.data;
+        if (
+          msg.includes('[INFO] 爬虫资源已释放，任务结束。') || 
+          msg.includes('[WARNING] 未找到任何视频数据，任务提前结束。')
+        ) {
           setIsRunning(false);
         }
       };
