@@ -143,12 +143,19 @@ async def _real_pipeline_execution(config: dict):
                 # 2. 抓取并存入评论
                 comments_data = await scraper.fetch_comments(v_data['url'], 5)
                 for c_data in comments_data:
-                    thread = Thread(
-                        video_id=video.id,
-                        root_comment=c_data['root_comment'],
-                        replies_json=json.dumps(c_data['replies'])
-                    )
-                    db.add(thread)
+                    # 去重检查：避免多次执行任务时数据库堆积重复评论
+                    existing_thread = db.query(Thread).filter_by(
+                        video_id=video.id, 
+                        root_comment=c_data['root_comment']
+                    ).first()
+                    
+                    if not existing_thread:
+                        thread = Thread(
+                            video_id=video.id,
+                            root_comment=c_data['root_comment'],
+                            replies_json=json.dumps(c_data['replies'])
+                        )
+                        db.add(thread)
                 db.commit()
                 
                 # 3. 触发分析流（ASR/OCR -> LLM -> Markdown）

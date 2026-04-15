@@ -18,10 +18,13 @@ def test_full_pipeline(db_session):
     v = Video(id="v_pipe_1", platform="douyin", url="http://x", title="Amazing Pipeline", author="Test")
     t1 = Thread(video_id="v_pipe_1", root_comment="Great video!", replies_json="[]")
     t2 = Thread(video_id="v_pipe_1", root_comment="Nice!", replies_json="[]")
+    # 注入一条显式没有价值的评论以测试 exporter 短路逻辑
+    t3 = Thread(video_id="v_pipe_1", root_comment="Useless comment", replies_json="[]", is_valuable=False)
     
     db_session.add(v)
     db_session.add(t1)
     db_session.add(t2)
+    db_session.add(t3)
     db_session.commit()
 
     # 运行流水线
@@ -34,7 +37,7 @@ def test_full_pipeline(db_session):
     assert "[OCR" in saved_v.ocr_text
     
     # 验证 Thread 分析结果（Fake 返回 True）
-    assert len(saved_v.threads) == 2
+    assert len(saved_v.threads) == 3
     assert saved_v.threads[0].is_valuable is True
     assert saved_v.threads[0].value_tags == '["tips", "tutorial"]'
     

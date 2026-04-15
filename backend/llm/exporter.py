@@ -30,14 +30,25 @@ class MarkdownExporter:
         md_lines.append(insights or "None")
         
         md_lines.append("\n## 3. Valuable Conversations")
-        valuable_threads = [t for t in threads if (getattr(t, 'is_valuable', False) or t.get('is_valuable') is True)]
+        
+        def is_thread_valuable(t):
+            if isinstance(t, dict):
+                return t.get('is_valuable') is True
+            return getattr(t, 'is_valuable', False) is True
+
+        valuable_threads = [t for t in threads if is_thread_valuable(t)]
         
         if not valuable_threads:
             md_lines.append("No valuable conversations found.")
         else:
             for i, t in enumerate(valuable_threads):
-                tags = getattr(t, 'value_tags', '') or t.get('value_tags', '')
-                root = getattr(t, 'root_comment', '') or t.get('root_comment', '')
+                if isinstance(t, dict):
+                    tags = t.get('value_tags', '')
+                    root = t.get('root_comment', '')
+                else:
+                    tags = getattr(t, 'value_tags', '')
+                    root = getattr(t, 'root_comment', '')
+                    
                 md_lines.append(f"### Thread {i+1} [Tags: {tags}]")
                 md_lines.append(f"> {root}")
                 md_lines.append("")
