@@ -101,7 +101,24 @@ class RealOpenAIClient(LLMClient):
                     f"Model output was likely truncated due to max_tokens limits. "
                     f"No complete JSON object found in response.\nRaw Response: {raw_content}"
                 )
+                
+        # Fix common JSON syntax errors caused by hallucinations before parsing
+        # 1. Handle arrays wrapped in quotes with escaped inner quotes
+        # Example: `"[\"A\", \"B\"]"` -> `["A", "B"]`
+        def fix_array_string(match):
+            inner = match.group(1)
+            # Remove all backslashes that escape quotes
+            inner = inner.replace('\\"', '"')
+            # Remove any stray double quotes that were surrounding the list
+            return f"[{inner}]"
+
+        # Match literally `"[... ]"` with anything inside, allowing for spaces
+        cleaned_content = re.sub(r'"\s*\[(.*?)\]\s*"', fix_array_string, cleaned_content)
         
+        # Sometimes the regex above leaves things like `[""A"", "B"]`
+        # We can clean up double-double quotes inside lists to single double quotes
+        cleaned_content = cleaned_content.replace('""', '"')
+
         try:
             parsed_data = json.loads(cleaned_content)
             
