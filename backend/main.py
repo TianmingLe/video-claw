@@ -78,6 +78,8 @@ async def get_reports(limit: int = 10):
 @app.post("/api/task/start")
 async def start_task(config: dict):
     """
+    触发任务接口，通过后台任务执行 Pipeline，并使用 WS 广播日志。
+    """
     global task_running
     if task_running:
         return {"status": "Task rejected", "reason": "Another task is running"}
@@ -163,7 +165,7 @@ import uvicorn
 import socket
 
 def get_free_port(default_port=8000):
-    """尝试获取默认端口，如果被占用则寻找一个空闲端口"""
+    # Try to get default port, else find a free port
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.bind(("127.0.0.1", default_port))
