@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from typing import Type, TypeVar, Any
 from pydantic import BaseModel
@@ -122,15 +123,29 @@ class RealOpenAIClient(LLMClient):
             f"3. Fill in the actual analyzed values in place of the type placeholders."
         )
         
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=4096
-        )
+        max_retries = 3
+        last_exception = None
+        response = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.2,
+                    max_tokens=4096
+                )
+                break
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s
+                
+        if not response:
+            raise RuntimeError(f"LLM API completely failed after {max_retries} attempts. Last Error: {str(last_exception)}")
         
         raw_content = response.choices[0].message.content.strip()
         
