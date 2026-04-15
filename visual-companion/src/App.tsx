@@ -47,11 +47,26 @@ export default function App() {
   useEffect(() => {
     // 监听 Electron 传来的动态端口
     if (window.electronAPI) {
-      window.electronAPI.onBackendPort((port: string) => {
+      const handlePort = (port: string) => {
+        if (!port) return;
         setLogs(prev => (prev[prev.length - 1] === `[System] Discovered Backend on port ${port}` ? prev : [...prev, `[System] Discovered Backend on port ${port}`]));
         setBackendHttpBase(`http://127.0.0.1:${port}`);
         setBackendWsUrl(`ws://127.0.0.1:${port}/ws`);
-      });
+      };
+      
+      // 主动拉取一次端口，防止竞态条件导致事件丢失
+      if (window.electronAPI.getBackendPort) {
+        window.electronAPI.getBackendPort().then(handlePort);
+      }
+      
+      window.electronAPI.onBackendPort(handlePort);
+      
+      // 添加清理函数，防止 React 18 StrictMode 导致事件监听器内存泄漏重复触发
+      return () => {
+        if (window.electronAPI.removeListener) {
+          window.electronAPI.removeListener('backend-port', handlePort);
+        }
+      };
     }
   }, []);
 

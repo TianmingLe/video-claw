@@ -1,19 +1,35 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const isDev = require('electron-is-dev');
 const { spawn } = require('child_process');
 
 let mainWindow;
 let pythonProcess = null;
+let backendPort = null;
 
 function startPythonBackend() {
-  // 在真实打包时需要判断环境，这里假设使用本地 python
+  // Determine correct paths based on whether app is packaged (.asar)
+  // In dev, __dirname is visual-companion/electron
+  // In prod, __dirname is visual-companion/resources/app.asar/electron (or similar)
+  const isPackaged = app.isPackaged;
+  
+  let cwdPath;
+  let scriptPath;
+  
+  if (isPackaged) {
+    // When packaged, backend should ideally be placed outside the asar 
+    // or bundled as an executable. Assuming it's placed next to the executable in a 'backend' folder
+    cwdPath = path.join(process.resourcesPath, '..');
+    scriptPath = path.join(cwdPath, 'backend', 'main.py');
+  } else {
+    cwdPath = path.join(__dirname, '..', '..');
+    scriptPath = path.join(cwdPath, 'backend', 'main.py');
+  }
+  
   const pythonPath = 'python';
-  // 指定 backend/main.py 的相对路径 (假设执行在 workspace 根或 visual-companion 目录下)
-  const scriptPath = path.join(__dirname, '..', '..', 'backend', 'main.py');
   
   pythonProcess = spawn(pythonPath, [scriptPath], {
-    cwd: path.join(__dirname, '..', '..'), // 确保在 workspace 根目录运行
+    cwd: cwdPath,
     env: { ...process.env, PYTHONUNBUFFERED: '1' }
   });
 
@@ -23,10 +39,12 @@ function startPythonBackend() {
     
     // 解析 Python 后端分配的端口
     const portMatch = output.match(/Starting server on port (\d+)/);
-    if (portMatch && mainWindow) {
-      const port = portMatch[1];
-      // 通过 webContents 将端口号发送给前端 React
-      mainWindow.webContents.send('backend-port', port);
+    if (portMatch) {
+      backendPort = portMatch[1];
+      if (mainWindow) {
+        // 尝试主动推送给前端
+        mainWindow.webContents.send('backend-port', backendPort);
+      }
     }
   });
 
@@ -38,6 +56,11 @@ function startPythonBackend() {
     console.log(`Python process exited with code ${code}`);
   });
 }
+
+// 允许前端主动拉取端口，解决启动竞态问题（React 还没挂载完 Python 就发了端口）
+ipcMain.handle('get-backend-port', () => {
+  return backendPort;
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({

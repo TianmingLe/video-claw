@@ -58,7 +58,10 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # 保持连接，等待客户端消息（如果需要双向通信）
             await websocket.receive_text()
-    except WebSocketDisconnect:
+    except Exception:
+        # Catch any exception including WebSocketDisconnect, ConnectionClosedError
+        pass
+    finally:
         manager.disconnect(websocket)
 
 @app.get("/api/reports")
@@ -160,7 +163,9 @@ async def _real_pipeline_execution(config: dict):
                 
                 # 3. 触发分析流（ASR/OCR -> LLM -> Markdown）
                 await manager.broadcast(f"[LLM] 调用分析流水线生成报告...")
-                report_md = pipeline.run_for_video(video.id, "dummy.mp4")
+                # Pipeline 是完全同步阻塞的（内含 time.sleep 和同步 openai.chat.completions.create）
+                # 必须把它放入 asyncio.to_thread 中运行，否则会挂起整个 FastAPI 事件循环，导致其他请求卡死，WS 心跳断开
+                report_md = await asyncio.to_thread(pipeline.run_for_video, video.id, "dummy.mp4")
                 
                 await manager.broadcast(f"[SUCCESS] 视频 '{v_data['title']}' 处理完成！\n预览：\n{report_md[:100]}...")
                 
