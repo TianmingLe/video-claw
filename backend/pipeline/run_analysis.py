@@ -55,7 +55,7 @@ class AnalysisPipeline:
         for t in threads:
             analysis = self.analyzer.analyze_thread(t.root_comment, t.replies_json)
             t.is_valuable = analysis.is_valuable
-            t.value_tags = analysis.value_tags
+            t.value_tags = json.dumps(analysis.value_tags, ensure_ascii=False) if isinstance(analysis.value_tags, list) else analysis.value_tags
             
             if t.is_valuable:
                 valuable_threads_data.append({

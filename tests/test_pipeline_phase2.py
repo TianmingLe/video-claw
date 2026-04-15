@@ -36,11 +36,11 @@ def test_full_pipeline(db_session):
     # 验证 Thread 分析结果（Fake 返回 True）
     assert len(saved_v.threads) == 2
     assert saved_v.threads[0].is_valuable is True
-    assert saved_v.threads[0].value_tags == "tips, tutorial"
+    assert saved_v.threads[0].value_tags == '["tips", "tutorial"]'
     
     # 验证 Summary 和 Report
     assert saved_v.summary is not None
     assert saved_v.summary.model_name == "fake-gpt-4o-mini"
     assert saved_v.summary.report_markdown is not None
     assert "Amazing Pipeline" in saved_v.summary.report_markdown
-    assert "tips, tutorial" in saved_v.summary.report_markdown
+    assert '["tips", "tutorial"]' in saved_v.summary.report_markdown

@@ -4,7 +4,7 @@ from backend.llm.client import LLMClient
 
 class ThreadAnalysis(BaseModel):
     is_valuable: bool
-    value_tags: str
+    value_tags: List[str]
     reason: str
 
 class VideoSummary(BaseModel):

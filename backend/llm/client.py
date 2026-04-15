@@ -131,7 +131,7 @@ class FakeLLMClient(LLMClient):
         if schema_name == "ThreadAnalysis":
             return schema(**{
                 "is_valuable": True,
-                "value_tags": "tips, tutorial",
+                "value_tags": ["tips", "tutorial"],
                 "reason": "Simulated value detection."
             })
             
