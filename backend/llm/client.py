@@ -55,23 +55,18 @@ class LLMClient(ABC):
                         
             elif "str" in expected_type.lower():
                 # Look for a string value
-                match = re.search(rf'"{field_name}"\s*:\s*["\']([\s\S]*?)(?:["\']\s*,|["\']\s*}})', raw_content)
+                # Match `"field_name": "value"` or `"field_name": \"value\"`
+                # And capture until the next `",` or `"}` or just the end of the file if it's truncated
+                match = re.search(rf'"{field_name}"\s*:\s*\\?["\']([\s\S]*?)(?:\\?["\']\s*(?:,|}})|$)', raw_content)
                 if match:
                     # Clean up escaped quotes
-                    val = match.group(1).replace('\"', '"').replace('\n', '\n')
+                    val = match.group(1).replace('\\"', '"').replace('\\n', '\n')
                     extracted[field_name] = val
                 else:
                     extracted[field_name] = ""
                     
         return extracted
 
-class RealOpenAIClient(LLMClient):
-    def __init__(self, model_name: str, api_key: str, base_url: str):
-        if not api_key:
-            raise ValueError("API Key is required for RealOpenAIClient")
-        self.model_name = model_name
-        self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
-        
     def _extract_values_from_schema_hallucination(self, parsed_data: dict, schema: Type[T]) -> dict:
         """
         Extreme fallback: The model hallucinates an entire JSON Schema block with 'title', 'type', 
@@ -101,6 +96,13 @@ class RealOpenAIClient(LLMClient):
                 extracted[field_name] = val
         return extracted
 
+class RealOpenAIClient(LLMClient):
+    def __init__(self, model_name: str, api_key: str, base_url: str):
+        if not api_key:
+            raise ValueError("API Key is required for RealOpenAIClient")
+        self.model_name = model_name
+        self.client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        
     def generate_structured(self, prompt: str, schema: Type[T]) -> T:
         # Build a simple format string from the Pydantic schema fields
         fields_format = {}
