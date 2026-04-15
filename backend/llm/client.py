@@ -10,7 +10,60 @@ T = TypeVar('T', bound=BaseModel)
 class LLMClient(ABC):
     @abstractmethod
     def generate_structured(self, prompt: str, schema: Type[T]) -> T:
+        """
+        使用提示词让大模型按指定 Schema 输出 JSON
+        """
         pass
+        
+    def _regex_fallback_extract(self, raw_content: str, schema: Type[T]) -> dict:
+        """
+        Ultimate fallback: When json.loads completely fails (due to missing commas,
+        unclosed quotes, or trailing garbage), we try to extract the fields directly 
+        using regex patterns based on the expected schema.
+        """
+        extracted = {}
+        for field_name, field_info in schema.model_fields.items():
+            expected_type = str(field_info.annotation)
+            
+            # Try to find the field key, e.g., "is_valuable": or 'is_valuable':
+            # and capture the value until the next field, comma, or end of brace
+            if "bool" in expected_type.lower():
+                # Look for true/false (case insensitive)
+                match = re.search(rf'"{field_name}"\s*:\s*["\']?(true|false)["\']?', raw_content, re.IGNORECASE)
+                if match:
+                    extracted[field_name] = match.group(1).lower() == 'true'
+                else:
+                    extracted[field_name] = False # Safe default
+                    
+            elif "list" in expected_type.lower() or "List" in expected_type:
+                # Look for an array-like structure
+                match = re.search(rf'"{field_name}"\s*:\s*\[(.*?)\]', raw_content, re.DOTALL)
+                if match:
+                    inner = match.group(1)
+                    # Extract quoted strings from inside the brackets
+                    items = re.findall(r'["\'](.*?)["\']', inner)
+                    # Filter out empty or whitespace-only items
+                    extracted[field_name] = [item for item in items if item.strip()]
+                else:
+                    # Fallback to capturing a string and splitting by comma
+                    match = re.search(rf'"{field_name}"\s*:\s*["\'](.*?)["\']', raw_content)
+                    if match:
+                        items = [s.strip() for s in match.group(1).split(",")]
+                        extracted[field_name] = [item for item in items if item]
+                    else:
+                        extracted[field_name] = []
+                        
+            elif "str" in expected_type.lower():
+                # Look for a string value
+                match = re.search(rf'"{field_name}"\s*:\s*["\']([\s\S]*?)(?:["\']\s*,|["\']\s*}})', raw_content)
+                if match:
+                    # Clean up escaped quotes
+                    val = match.group(1).replace('\"', '"').replace('\n', '\n')
+                    extracted[field_name] = val
+                else:
+                    extracted[field_name] = ""
+                    
+        return extracted
 
 class RealOpenAIClient(LLMClient):
     def __init__(self, model_name: str, api_key: str, base_url: str):
@@ -132,8 +185,18 @@ class RealOpenAIClient(LLMClient):
                 parsed_data = self._extract_values_from_schema_hallucination(parsed_data, schema)
             
             return schema(**parsed_data)
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"Failed to parse LLM JSON response: {str(e)}\nRaw Response: {raw_content}")
+        except (json.JSONDecodeError, Exception):
+            # ULTIMATE FALLBACK: If standard parsing or Pydantic validation fails, 
+            # use regex to rip values out of the text directly.
+            try:
+                parsed_data = self._regex_fallback_extract(cleaned_content, schema)
+                return schema(**parsed_data)
+            except Exception as final_e:
+                raise RuntimeError(
+                    f"Failed to parse LLM response even with regex fallback.\n"
+                    f"Error: {str(final_e)}\n"
+                    f"Raw Content: {raw_content}"
+                )
 
 class FakeLLMClient(LLMClient):
     def __init__(self, model_name: str = "fake-gpt-4o-mini", api_key: str = None, base_url: str = None):
