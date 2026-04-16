@@ -57,6 +57,7 @@ export default function App() {
   const [showReports, setShowReports] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [reportsError, setReportsError] = useState<string>('');
 
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -95,6 +96,11 @@ export default function App() {
     window.localStorage.setItem('omni.backend_ws_url', backendWsUrl);
     window.localStorage.setItem('omni.pipeline_timeout_seconds', String(pipelineTimeoutSeconds));
   }, [backendHttpBase, backendWsUrl, pipelineTimeoutSeconds]);
+
+  const buildApiUrl = useCallback((path: string) => {
+    if (!path.startsWith('/')) return path;
+    return backendHttpBase ? `${backendHttpBase}${path}` : path;
+  }, [backendHttpBase]);
 
   useEffect(() => {
     const appendLog = (msg: string) => {
@@ -221,16 +227,37 @@ export default function App() {
   };
 
   const fetchReports = useCallback(async () => {
+    setReportsError('');
     try {
-      const response = await fetch(`${backendHttpBase}/api/reports?limit=20`);
-      if (response.ok) {
-        const data = await response.json();
-        setReports(data);
+      const primaryUrl = buildApiUrl('/api/reports?limit=20');
+      let response: Response | null = null;
+      try {
+        response = await fetch(primaryUrl);
+      } catch {
+        response = null;
+      }
+
+      if (!response || !response.ok) {
+        if (backendHttpBase) {
+          response = await fetch('/api/reports?limit=20');
+        }
+      }
+
+      if (!response || !response.ok) throw new Error('Failed to fetch reports');
+      const data = await response.json();
+      setReports(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setSelectedReport(prev => {
+          if (!prev) return data[0];
+          const found = data.find((r: ReportItem) => r.id === prev.id);
+          return found ?? data[0];
+        });
       }
     } catch (err) {
       console.error("Failed to fetch reports", err);
+      setReportsError(String(err));
     }
-  }, [backendHttpBase]);
+  }, [backendHttpBase, buildApiUrl]);
 
   useEffect(() => {
     if (showReports) {
@@ -244,23 +271,42 @@ export default function App() {
     setLogs(prev => [...prev, '\n--- Starting New Task ---']);
     
     try {
-      const response = await fetch(`${backendHttpBase}/api/task/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          platform, 
-          keyword: keyword.split('\n')[0] || 'Python教程', 
-          depth: depth,
-          pipeline_timeout_seconds: pipelineTimeoutSeconds,
-          llm_model: llmModel,
-          llm_api_key: llmApiKey,
-          llm_base_url: llmBaseUrl,
-          vlm_model: vlmModel,
-          vlm_api_key: vlmApiKey,
-          vlm_base_url: vlmBaseUrl
-        })
-      });
-      if (!response.ok) throw new Error('Network response was not ok');
+      const payload = { 
+        platform, 
+        keyword: keyword.split('\n')[0] || 'Python教程', 
+        depth: depth,
+        pipeline_timeout_seconds: pipelineTimeoutSeconds,
+        llm_model: llmModel,
+        llm_api_key: llmApiKey,
+        llm_base_url: llmBaseUrl,
+        vlm_model: vlmModel,
+        vlm_api_key: vlmApiKey,
+        vlm_base_url: vlmBaseUrl
+      };
+
+      const primaryUrl = buildApiUrl('/api/task/start');
+      let response: Response | null = null;
+      try {
+        response = await fetch(primaryUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        response = null;
+      }
+
+      if (!response || !response.ok) {
+        if (backendHttpBase) {
+          response = await fetch('/api/task/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
+      }
+
+      if (!response || !response.ok) throw new Error('Network response was not ok');
     } catch (err) {
       setLogs(prev => [...prev, `[Error] Failed to trigger task: ${err}`]);
       setIsRunning(false);
@@ -603,7 +649,9 @@ export default function App() {
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {reports.length === 0 ? (
-                  <div className="text-sm text-gray-500 text-center mt-10">暂无生成的分析报告</div>
+                  <div className="text-sm text-gray-500 text-center mt-10">
+                    {reportsError ? `报告拉取失败：${reportsError}` : '暂无生成的分析报告'}
+                  </div>
                 ) : (
                   reports.map(r => (
                     <button
