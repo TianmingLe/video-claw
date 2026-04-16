@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from backend.database.models import get_engine, create_tables, Video, Thread, Summary
 from backend.scrapers.douyin import DouyinScraper
 from backend.pipeline.run_analysis import AnalysisPipeline
+from backend.ws.logging import build_ws_log
 
 app = FastAPI()
 
@@ -50,6 +51,30 @@ class ConnectionManager:
 manager = ConnectionManager()
 task_lock = asyncio.Lock()
 task_running = False
+
+async def ws_log(
+    *,
+    level: str,
+    module: str,
+    msg: str,
+    reason: str | None = None,
+    run_id: int | None = None,
+    video_id: str | None = None,
+    metrics: dict | None = None,
+    counts: dict | None = None,
+):
+    await manager.broadcast(
+        build_ws_log(
+            level=level,
+            module=module,
+            msg=msg,
+            reason=reason,
+            run_id=run_id,
+            video_id=video_id,
+            metrics=metrics,
+            counts=counts,
+        )
+    )
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
