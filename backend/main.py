@@ -67,13 +67,13 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/api/reports")
 async def get_reports(limit: int = 10):
     with SessionLocal() as db:
-        reports = db.query(Summary).order_by(Summary.created_at.desc()).limit(limit).all()
+        reports = db.query(Summary).order_by(Summary.id.desc()).limit(limit).all()
         return [
             {
                 "id": r.id,
                 "video_id": r.video_id,
                 "markdown": r.report_markdown,
-                "created_at": r.created_at
+                "created_at": None
             }
             for r in reports if r.report_markdown
         ]
