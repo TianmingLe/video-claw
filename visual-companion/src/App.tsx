@@ -1,14 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   Search, Settings, Play, Database, BarChart, Terminal, Download, Bot, ShieldAlert, FileText, X
 } from 'lucide-react';
 
-// 扩展全局 Window 接口以支持 TypeScript 编译
+type ReportItem = {
+  id: number;
+  video_id: string;
+  markdown: string;
+  created_at: string;
+};
+
 declare global {
   interface Window {
-    electronAPI: any;
+    electronAPI?: {
+      onBackendPort: (callback: (port: string) => void) => unknown;
+      removeListener?: (channel: string, wrapper: unknown) => void;
+      getBackendPort?: () => Promise<string | null>;
+    };
   }
 }
 
@@ -21,22 +31,32 @@ export default function App() {
   
   // AI 模型配置状态
   const [llmModel, setLlmModel] = useState('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B');
-  const [llmApiKey, setLlmApiKey] = useState('sk-wxnohcyzwvlelbjkjvxjgmmkwxldaolyemiawrcoodycwlez');
+  const [llmApiKey, setLlmApiKey] = useState('');
   const [vlmModel, setVlmModel] = useState('deepseek-ai/DeepSeek-V3');
   const [vlmApiKey, setVlmApiKey] = useState('');
   const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.siliconflow.cn/v1');
   const [vlmBaseUrl, setVlmBaseUrl] = useState('https://api.siliconflow.cn/v1');
   
-  const [backendHttpBase, setBackendHttpBase] = useState<string>('');
+  const [backendHttpBase, setBackendHttpBase] = useState<string>(() => {
+    return window.localStorage.getItem('omni.backend_http_base') ?? '';
+  });
   const [backendWsUrl, setBackendWsUrl] = useState<string>(() => {
+    const saved = window.localStorage.getItem('omni.backend_ws_url');
+    if (saved) return saved;
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     return `${wsProtocol}://${window.location.host}/ws`;
   });
+  const [pipelineTimeoutSeconds, setPipelineTimeoutSeconds] = useState<number>(() => {
+    const saved = window.localStorage.getItem('omni.pipeline_timeout_seconds');
+    const n = saved ? Number(saved) : 300;
+    return Number.isFinite(n) && n > 0 ? n : 300;
+  });
   
   // 报告数据状态
-  const [reports, setReports] = useState<any[]>([]);
+  const [reports, setReports] = useState<ReportItem[]>([]);
   const [showReports, setShowReports] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<any | null>(null);
+  const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +89,12 @@ export default function App() {
       };
     }
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('omni.backend_http_base', backendHttpBase);
+    window.localStorage.setItem('omni.backend_ws_url', backendWsUrl);
+    window.localStorage.setItem('omni.pipeline_timeout_seconds', String(pipelineTimeoutSeconds));
+  }, [backendHttpBase, backendWsUrl, pipelineTimeoutSeconds]);
 
   useEffect(() => {
     const appendLog = (msg: string) => {
@@ -109,7 +135,7 @@ export default function App() {
 
       try {
         ws = new WebSocket(backendWsUrl);
-      } catch (_e) {
+      } catch {
         appendLog('[Error] Failed to create WebSocket.');
         scheduleReconnect();
         return;
@@ -125,7 +151,9 @@ export default function App() {
         pingTimer = window.setInterval(() => {
           try {
             if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping');
-          } catch (_e) {}
+          } catch {
+            void 0;
+          }
         }, 20000);
       };
 
@@ -170,7 +198,9 @@ export default function App() {
       clearPingTimer();
       try {
         ws?.close();
-      } catch (_e) {}
+      } catch {
+        void 0;
+      }
     };
   }, [backendWsUrl]);
 
@@ -190,8 +220,7 @@ export default function App() {
     }
   };
 
-  const fetchReports = async () => {
-    if (!backendHttpBase) return;
+  const fetchReports = useCallback(async () => {
     try {
       const response = await fetch(`${backendHttpBase}/api/reports?limit=20`);
       if (response.ok) {
@@ -201,13 +230,13 @@ export default function App() {
     } catch (err) {
       console.error("Failed to fetch reports", err);
     }
-  };
+  }, [backendHttpBase]);
 
   useEffect(() => {
     if (showReports) {
       fetchReports();
     }
-  }, [showReports, backendHttpBase]);
+  }, [showReports, fetchReports]);
 
   const handleStartTask = async () => {
     if (isRunning) return;
@@ -222,6 +251,7 @@ export default function App() {
           platform, 
           keyword: keyword.split('\n')[0] || 'Python教程', 
           depth: depth,
+          pipeline_timeout_seconds: pipelineTimeoutSeconds,
           llm_model: llmModel,
           llm_api_key: llmApiKey,
           llm_base_url: llmBaseUrl,
@@ -259,7 +289,10 @@ export default function App() {
               <FileText className="w-4 h-4" />
               历史报告
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
               <Settings className="w-4 h-4" />
               全局设置
             </button>
@@ -273,6 +306,87 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        {showSettings && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-6 z-50">
+            <div className="bg-white rounded-xl shadow-xl border border-gray-100 w-full max-w-2xl">
+              <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-gray-600" />
+                  全局设置
+                </h2>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">后端 HTTP Base</label>
+                    <input
+                      className="w-full border border-gray-300 rounded-lg p-2.5"
+                      value={backendHttpBase}
+                      onChange={(e) => setBackendHttpBase(e.target.value)}
+                      placeholder="留空则使用 /api 代理"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">后端 WebSocket 地址</label>
+                    <input
+                      className="w-full border border-gray-300 rounded-lg p-2.5"
+                      value={backendWsUrl}
+                      onChange={(e) => setBackendWsUrl(e.target.value)}
+                      placeholder="例如 ws://127.0.0.1:8000/ws"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">单视频超时 (秒)</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded-lg p-2.5"
+                      value={pipelineTimeoutSeconds}
+                      onChange={(e) => setPipelineTimeoutSeconds(Number(e.target.value))}
+                      min={30}
+                      step={10}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+                <button
+                  onClick={() => {
+                    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+                    setBackendHttpBase('');
+                    setBackendWsUrl(`${wsProtocol}://${window.location.host}/ws`);
+                    setPipelineTimeoutSeconds(300);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
+                >
+                  恢复默认
+                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
+                  >
+                    关闭
+                  </button>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-6">
           <div className="col-span-2 space-y-6">
