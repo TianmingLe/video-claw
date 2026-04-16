@@ -87,14 +87,14 @@ async def start_task(config: dict):
     # check if lock is already acquired without blocking
     if task_lock.locked() or task_running:
         return {"status": "Task rejected", "reason": "Another task is running"}
-        
+
+    task_running = True
     asyncio.create_task(real_pipeline_execution(config))
     return {"status": "Task started", "config": config}
 
 async def real_pipeline_execution(config: dict):
     global task_running
     async with task_lock:
-        task_running = True
         try:
             await _real_pipeline_execution(config)
         finally:
@@ -163,9 +163,30 @@ async def _real_pipeline_execution(config: dict):
                 
                 # 3. 触发分析流（ASR/OCR -> LLM -> Markdown）
                 await manager.broadcast(f"[LLM] 调用分析流水线生成报告...")
-                # Pipeline 是完全同步阻塞的（内含 time.sleep 和同步 openai.chat.completions.create）
-                # 必须把它放入 asyncio.to_thread 中运行，否则会挂起整个 FastAPI 事件循环，导致其他请求卡死，WS 心跳断开
-                report_md = await asyncio.to_thread(pipeline.run_for_video, video.id, "dummy.mp4")
+
+                heartbeat_task = None
+                timed_out = False
+                try:
+                    async def heartbeat():
+                        while True:
+                            await asyncio.sleep(10)
+                            await manager.broadcast("[PROGRESS] 分析中，请稍候...")
+
+                    heartbeat_task = asyncio.create_task(heartbeat())
+                    try:
+                        report_md = await asyncio.wait_for(
+                            asyncio.to_thread(pipeline.run_for_video, video.id, "dummy.mp4"),
+                            timeout=float(config.get("pipeline_timeout_seconds", 300)),
+                        )
+                    except asyncio.TimeoutError:
+                        timed_out = True
+                finally:
+                    if heartbeat_task:
+                        heartbeat_task.cancel()
+
+                if timed_out:
+                    await manager.broadcast(f"[ERROR] 视频 '{v_data['title']}' 分析超时，已跳过。")
+                    continue
                 
                 await manager.broadcast(f"[SUCCESS] 视频 '{v_data['title']}' 处理完成！\n预览：\n{report_md[:100]}...")
                 
