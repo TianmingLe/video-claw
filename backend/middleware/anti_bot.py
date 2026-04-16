@@ -11,9 +11,9 @@ class AntiBotController:
         # 基础延迟配置 (单位: 秒) [min, max]
         self.delay_config = {
             "normal": {
-                "search": [0.3, 1.2],
-                "click_video": [0.8, 2.0],
-                "scroll_comments": [1.0, 2.5]
+                "search": [1.0, 3.0],
+                "click_video": [1.0, 3.0],
+                "scroll_comments": [1.0, 3.0]
             },
             "special_forces": {
                 "search": [0.1, 0.5],

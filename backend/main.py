@@ -283,7 +283,9 @@ async def _real_pipeline_execution(config: dict):
     started_monotonic = time.monotonic()
     
     await manager.broadcast(f"[INFO] 初始化 {platform} Playwright 爬虫...")
-    scraper = DouyinScraper()
+    with SessionLocal() as db:
+        settings = SettingsStore(db).get_json("douyin.settings")
+    scraper = DouyinScraper(settings=settings)
     
     try:
         try:
@@ -309,6 +311,17 @@ async def _real_pipeline_execution(config: dict):
         
         if not videos_data:
             await manager.broadcast("[WARNING] 未找到任何视频数据，任务提前结束。")
+            if run_id is not None:
+                with SessionLocal() as db:
+                    db.query(TaskRun).filter_by(id=run_id).update(
+                        {
+                            "status": "failed",
+                            "error_code": scraper.last_error_code or "NO_RESULTS",
+                            "finished_at": datetime.utcnow(),
+                            "duration_ms": int((time.monotonic() - started_monotonic) * 1000),
+                        }
+                    )
+                    db.commit()
             return
             
         await manager.broadcast(f"[SUCCESS] 找到 {len(videos_data)} 个视频，开始抓取评论并入库...")
