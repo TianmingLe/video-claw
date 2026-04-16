@@ -12,6 +12,7 @@ class AnalysisPipeline:
     def __init__(self, db_session: Session, config: dict = None):
         self.db = db_session
         self.config = config or {}
+        self.run_id = self.config.get("run_id")
         
         self.asr_provider = FakeASRProvider()
         self.ocr_provider = FakeOCRProvider(
@@ -50,7 +51,10 @@ class AnalysisPipeline:
         self.db.commit()
 
         # 3. 分析线程价值
-        threads = self.db.query(Thread).filter_by(video_id=video_id).all()
+        if self.run_id is not None:
+            threads = self.db.query(Thread).filter_by(video_id=video_id, run_id=self.run_id).all()
+        else:
+            threads = self.db.query(Thread).filter_by(video_id=video_id).all()
         valuable_threads_data = []
         for t in threads:
             try:
@@ -88,9 +92,12 @@ class AnalysisPipeline:
             key_points = ["Summary generation failed due to API or parsing error."]
             actionable_insights = str(e)
             
-        db_summary = self.db.query(Summary).filter_by(video_id=video_id).first()
+        if self.run_id is not None:
+            db_summary = self.db.query(Summary).filter_by(video_id=video_id, run_id=self.run_id).first()
+        else:
+            db_summary = self.db.query(Summary).filter_by(video_id=video_id).first()
         if not db_summary:
-            db_summary = Summary(video_id=video_id)
+            db_summary = Summary(video_id=video_id, run_id=self.run_id)
             self.db.add(db_summary)
             
         db_summary.key_points_json = json.dumps(key_points)

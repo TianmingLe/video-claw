@@ -9,7 +9,7 @@ async def test_random_delay_normal_mode():
     start_time = time.time()
     await controller.random_delay("search")
     duration = time.time() - start_time
-    assert 0.3 <= duration <= 1.5 # normal 模式 search 延迟通常在 0.3 到 1.2 秒左右，给一点误差余量
+    assert 0.9 <= duration <= 3.2 # normal 模式 search 延迟通常在 1.0 到 3.0 秒左右，给一点误差余量
 
 @pytest.mark.asyncio
 async def test_random_delay_special_forces_mode():
