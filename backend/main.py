@@ -2,6 +2,7 @@ import os
 import asyncio
 import json
 from typing import List
+import uuid
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
@@ -53,6 +54,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 task_lock = asyncio.Lock()
 task_running = False
+admin_jobs: dict[str, dict] = {}
 
 async def ws_log(
     *,
@@ -137,12 +139,72 @@ async def delete_task_run(run_id: int):
     await ws_log(level="ADMIN", module="data_admin", msg="已删除任务结果", run_id=run_id, counts=counts)
     return {"deleted": counts}
 
+@app.delete("/api/task-runs")
+async def delete_all_task_runs(batch_size: int = 100):
+    task_id = uuid.uuid4().hex
+    admin_jobs[task_id] = {"status": "running", "counts": {}}
+
+    async def run_job():
+        total = {"task_run_videos": 0, "threads": 0, "summaries": 0, "task_runs": 0}
+        try:
+            while True:
+                with SessionLocal() as db:
+                    run_ids = [r[0] for r in db.query(TaskRun.id).order_by(TaskRun.id.asc()).limit(batch_size).all()]
+                if not run_ids:
+                    break
+
+                for rid in run_ids:
+                    with SessionLocal() as db:
+                        counts = delete_run_outputs(db, int(rid))
+                    for k, v in counts.items():
+                        total[k] = total.get(k, 0) + int(v)
+                    await ws_log(
+                        level="ADMIN",
+                        module="data_admin",
+                        msg="批次删除任务结果中",
+                        run_id=int(rid),
+                        counts={"task_id": task_id, **total},
+                    )
+
+            admin_jobs[task_id] = {"status": "success", "counts": total}
+            await ws_log(level="ADMIN", module="data_admin", msg="一键删除任务结果完成", counts={"task_id": task_id, **total})
+        except Exception as e:
+            admin_jobs[task_id] = {"status": "failed", "error": str(e), "counts": total}
+            await ws_log(level="ERROR", module="data_admin", msg="一键删除任务结果失败", reason="DELETE_FAILED", counts={"task_id": task_id, **total})
+
+    asyncio.create_task(run_job())
+    return {"task_id": task_id}
+
+@app.get("/api/admin/tasks/{task_id}")
+async def get_admin_task(task_id: str):
+    return admin_jobs.get(task_id, {"status": "not_found"})
+
 @app.delete("/api/videos/{video_id}")
 async def delete_video(video_id: str):
     with SessionLocal() as db:
         counts = delete_video_global(db, video_id)
     await ws_log(level="ADMIN", module="data_admin", msg="已删除视频全部数据", video_id=video_id, counts=counts)
     return {"deleted": counts}
+
+@app.post("/api/admin/db/vacuum")
+async def vacuum_db():
+    task_id = uuid.uuid4().hex
+    admin_jobs[task_id] = {"status": "running"}
+
+    async def run_job():
+        try:
+            await ws_log(level="ADMIN", module="db", msg="开始 VACUUM", counts={"task_id": task_id})
+            if engine.dialect.name == "sqlite":
+                with engine.connect() as conn:
+                    conn.exec_driver_sql("VACUUM")
+            admin_jobs[task_id] = {"status": "success"}
+            await ws_log(level="ADMIN", module="db", msg="VACUUM 完成", counts={"task_id": task_id})
+        except Exception as e:
+            admin_jobs[task_id] = {"status": "failed", "error": str(e)}
+            await ws_log(level="ERROR", module="db", msg="VACUUM 失败", reason="VACUUM_FAILED", counts={"task_id": task_id})
+
+    asyncio.create_task(run_job())
+    return {"task_id": task_id}
 
 @app.get("/api/settings/douyin")
 async def get_douyin_settings():
