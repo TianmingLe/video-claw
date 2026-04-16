@@ -3,10 +3,12 @@ import asyncio
 import json
 from typing import List
 import uuid
+import time
+from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
-from backend.database.models import get_engine, create_tables, Video, Thread, Summary, TaskRun
+from backend.database.models import get_engine, create_tables, Video, Thread, Summary, TaskRun, TaskRunVideo
 from backend.scrapers.douyin import DouyinScraper
 from backend.pipeline.run_analysis import AnalysisPipeline
 from backend.ws.logging import build_ws_log
@@ -239,9 +241,31 @@ async def start_task(config: dict):
     if task_lock.locked() or task_running:
         return {"status": "Task rejected", "reason": "Another task is running"}
 
+    platform = config.get("platform", "抖音")
+    keyword = config.get("keyword", "Python")
+    depth = int(config.get("depth", 2))
+    config_snapshot = dict(config)
+    config_snapshot.pop("llm_api_key", None)
+    config_snapshot.pop("vlm_api_key", None)
+
+    with SessionLocal() as db:
+        run = TaskRun(
+            platform=platform,
+            keyword=keyword,
+            depth=depth,
+            status="running",
+            started_at=datetime.utcnow(),
+            config_json=json.dumps(config_snapshot, ensure_ascii=False),
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        config["run_id"] = run.id
+
     task_running = True
     asyncio.create_task(real_pipeline_execution(config))
-    return {"status": "Task started", "config": config}
+    await ws_log(level="INFO", module="task", msg="任务已创建", run_id=config.get("run_id"))
+    return {"status": "Task started", "config": config, "run_id": config.get("run_id")}
 
 async def real_pipeline_execution(config: dict):
     global task_running
@@ -255,6 +279,8 @@ async def _real_pipeline_execution(config: dict):
     platform = config.get("platform", "抖音")
     keyword = config.get("keyword", "Python")
     depth = int(config.get("depth", 2))
+    run_id = config.get("run_id")
+    started_monotonic = time.monotonic()
     
     await manager.broadcast(f"[INFO] 初始化 {platform} Playwright 爬虫...")
     scraper = DouyinScraper()
@@ -265,6 +291,17 @@ async def _real_pipeline_execution(config: dict):
         except Exception as e:
             await manager.broadcast(f"[ERROR] 浏览器启动失败: {str(e)}")
             await manager.broadcast("[HINT] 如果是缺少系统依赖，请在服务器执行: playwright install-deps chromium")
+            if run_id is not None:
+                with SessionLocal() as db:
+                    db.query(TaskRun).filter_by(id=run_id).update(
+                        {
+                            "status": "failed",
+                            "error_code": "BROWSER_LAUNCH_FAILED",
+                            "finished_at": datetime.utcnow(),
+                            "duration_ms": int((time.monotonic() - started_monotonic) * 1000),
+                        }
+                    )
+                    db.commit()
             return
         await manager.broadcast("[INFO] 浏览器已启动，开始进入搜索页...")
         await manager.broadcast(f"[INFO] 正在搜索关键词 '{keyword}' (Top {depth})...")
@@ -293,21 +330,25 @@ async def _real_pipeline_execution(config: dict):
                     )
                     db.add(video)
                     db.commit()
+
+                if run_id is not None:
+                    exists = db.query(TaskRunVideo).filter_by(run_id=run_id, video_id=video.id).first()
+                    if not exists:
+                        db.add(TaskRunVideo(run_id=run_id, video_id=video.id))
+                        db.commit()
                 
                 # 2. 抓取并存入评论
                 comments_data = await scraper.fetch_comments(v_data['url'], 5)
                 for c_data in comments_data:
                     # 去重检查：避免多次执行任务时数据库堆积重复评论
-                    existing_thread = db.query(Thread).filter_by(
-                        video_id=video.id, 
-                        root_comment=c_data['root_comment']
-                    ).first()
+                    existing_thread = db.query(Thread).filter_by(video_id=video.id, root_comment=c_data["root_comment"], run_id=run_id).first()
                     
                     if not existing_thread:
                         thread = Thread(
                             video_id=video.id,
                             root_comment=c_data['root_comment'],
-                            replies_json=json.dumps(c_data['replies'])
+                            replies_json=json.dumps(c_data['replies']),
+                            run_id=run_id,
                         )
                         db.add(thread)
                 db.commit()
@@ -340,9 +381,29 @@ async def _real_pipeline_execution(config: dict):
                     continue
                 
                 await manager.broadcast(f"[SUCCESS] 视频 '{v_data['title']}' 处理完成！\n预览：\n{report_md[:100]}...")
-                
+        if run_id is not None:
+            with SessionLocal() as db:
+                db.query(TaskRun).filter_by(id=run_id).update(
+                    {
+                        "status": "success",
+                        "finished_at": datetime.utcnow(),
+                        "duration_ms": int((time.monotonic() - started_monotonic) * 1000),
+                    }
+                )
+                db.commit()
     except Exception as e:
         await manager.broadcast(f"[ERROR] 发生异常: {str(e)}")
+        if run_id is not None:
+            with SessionLocal() as db:
+                db.query(TaskRun).filter_by(id=run_id).update(
+                    {
+                        "status": "failed",
+                        "error_code": "PIPELINE_FAILED",
+                        "finished_at": datetime.utcnow(),
+                        "duration_ms": int((time.monotonic() - started_monotonic) * 1000),
+                    }
+                )
+                db.commit()
     finally:
         await scraper.close_browser()
         await manager.broadcast(f"[INFO] 爬虫资源已释放，任务结束。")
