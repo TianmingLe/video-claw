@@ -5,11 +5,12 @@ from typing import List
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
-from backend.database.models import get_engine, create_tables, Video, Thread, Summary
+from backend.database.models import get_engine, create_tables, Video, Thread, Summary, TaskRun
 from backend.scrapers.douyin import DouyinScraper
 from backend.pipeline.run_analysis import AnalysisPipeline
 from backend.ws.logging import build_ws_log
 from backend.settings.store import SettingsStore
+from backend.admin.data_management import clear_reports_content, delete_run_outputs, delete_video_global
 
 app = FastAPI()
 
@@ -103,6 +104,45 @@ async def get_reports(limit: int = 10):
             }
             for r in reports if r.report_markdown
         ]
+
+@app.post("/api/admin/reports/clear")
+async def clear_reports():
+    with SessionLocal() as db:
+        cleared_count = clear_reports_content(db)
+    await ws_log(level="ADMIN", module="data_admin", msg="已清空报告内容", counts={"summaries": cleared_count})
+    return {"cleared_count": cleared_count}
+
+@app.get("/api/task-runs")
+async def get_task_runs(limit: int = 20):
+    with SessionLocal() as db:
+        runs = db.query(TaskRun).order_by(TaskRun.id.desc()).limit(limit).all()
+        return [
+            {
+                "id": r.id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "platform": r.platform,
+                "keyword": r.keyword,
+                "depth": r.depth,
+                "status": r.status,
+                "error_code": r.error_code,
+                "duration_ms": r.duration_ms,
+            }
+            for r in runs
+        ]
+
+@app.delete("/api/task-runs/{run_id}")
+async def delete_task_run(run_id: int):
+    with SessionLocal() as db:
+        counts = delete_run_outputs(db, run_id)
+    await ws_log(level="ADMIN", module="data_admin", msg="已删除任务结果", run_id=run_id, counts=counts)
+    return {"deleted": counts}
+
+@app.delete("/api/videos/{video_id}")
+async def delete_video(video_id: str):
+    with SessionLocal() as db:
+        counts = delete_video_global(db, video_id)
+    await ws_log(level="ADMIN", module="data_admin", msg="已删除视频全部数据", video_id=video_id, counts=counts)
+    return {"deleted": counts}
 
 @app.get("/api/settings/douyin")
 async def get_douyin_settings():
