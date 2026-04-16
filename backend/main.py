@@ -9,6 +9,7 @@ from backend.database.models import get_engine, create_tables, Video, Thread, Su
 from backend.scrapers.douyin import DouyinScraper
 from backend.pipeline.run_analysis import AnalysisPipeline
 from backend.ws.logging import build_ws_log
+from backend.settings.store import SettingsStore
 
 app = FastAPI()
 
@@ -102,6 +103,29 @@ async def get_reports(limit: int = 10):
             }
             for r in reports if r.report_markdown
         ]
+
+@app.get("/api/settings/douyin")
+async def get_douyin_settings():
+    with SessionLocal() as db:
+        store = SettingsStore(db)
+        settings = store.get_json("douyin.settings")
+        cookies = settings.get("cookies")
+        ua_pool = settings.get("user_agent_pool")
+        cookies_count = len(cookies) if isinstance(cookies, list) else 0
+        ua_pool_count = len(ua_pool) if isinstance(ua_pool, list) else 0
+        return {
+            "has_cookies": cookies_count > 0,
+            "cookies_count": cookies_count,
+            "user_agent_pool_count": ua_pool_count,
+        }
+
+@app.put("/api/settings/douyin")
+async def put_douyin_settings(payload: dict):
+    with SessionLocal() as db:
+        store = SettingsStore(db)
+        store.set_json("douyin.settings", payload)
+    await ws_log(level="ADMIN", module="settings", msg="已更新抖音全局配置")
+    return {"status": "ok"}
 
 @app.post("/api/task/start")
 async def start_task(config: dict):
