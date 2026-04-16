@@ -21,7 +21,9 @@
 - 抖音抓取改造
   - 采用 UI 驱动搜索：从 `https://www.douyin.com/` 首页进入，通过页面交互触发搜索并进入结果页采集。
   - 移除 mock fallback：DOM 超时/登录墙等情况不再产出 mock URL，而是明确失败并返回空结果。
-  - 关键阶段可观测：通过 WS 日志输出关键步骤与错误原因。
+  - 关键阶段可观测：通过 WS 日志输出关键步骤与错误原因（结构化 JSON 为主，兼容文本）。
+  - 支持 Cookie 全局保存（跨任务复用）并注入 BrowserContext，便于通过登录墙/验证码场景。
+  - 支持基础指标埋点：抓取成功率、平均耗时；删除操作影响行数可观测。
 
 ## 非目标
 
@@ -45,11 +47,16 @@
 
 - `id`：自增主键
 - `created_at`
+- `started_at`
+- `finished_at`
+- `duration_ms`
 - `platform`
 - `keyword`
 - `depth`
 - `config_json`：保存任务配置快照（如 LLM/VLM/base_url/timeout 等，按需）
 - `status`：`running | success | failed`
+- `error_code`：用于明确失败原因（例如 `LOGIN_REQUIRED`、`DOM_TIMEOUT`、`NETWORK_ERROR`）
+- `metrics_json`：用于聚合统计（例如成功率、耗时、重试次数、删除影响行数等）
 
 ### 新增表：task_run_videos
 
@@ -66,6 +73,16 @@
 
 说明：`videos` 不强制加入 `run_id`，因为同一视频可能被多次 run 处理。run 与 video 使用关联表 `task_run_videos` 表达。
 
+### 新增表：app_settings（全局配置）
+
+用途：保存跨任务复用的全局配置（例如 Cookie），由后端统一管理并注入爬虫上下文。
+
+- `key`：主键字符串（例如 `douyin.cookies`）
+- `value`：Text（建议存 JSON 字符串，便于扩展：cookies/user_agent_pool/limits 等）
+- `updated_at`
+
+说明：Cookie 属于敏感信息但不等同于 API Key。实现阶段需避免在日志中输出 Cookie 原文。
+
 ### 删除语义（关键约定）
 
 - 按任务批次删除（DELETE task run）
@@ -75,6 +92,22 @@
   - 删除该视频的“全局全部数据”：`videos(id=...)`、`threads(video_id=...)`、`summaries(video_id=...)`、以及 `task_run_videos(video_id=...)`
 
 ## 设计二：后端 API
+
+### 2.0 WS 日志协议（结构化 JSON 为主，兼容文本）
+
+后端 WS 推送优先发送 JSON 字符串；前端尝试 `JSON.parse`，失败则按原字符串作为 `msg` 展示。
+
+推荐字段（最小集）：
+
+- `ts`：ISO8601
+- `level`：`INFO | WARNING | ERROR | SUCCESS | PROGRESS | ADMIN`
+- `module`：如 `douyin_scraper`、`pipeline`、`data_admin`
+- `msg`：用户可读信息
+- `reason`：机器可读原因码（如 `DOM_TIMEOUT`、`LOGIN_REQUIRED`、`RETRYING`）
+- `run_id`：用于关联任务批次
+- `video_id`：可选
+- `metrics`：可选（耗时、重试次数、成功率）
+- `counts`：可选（删除影响行数、产出数量）
 
 ### 2.1 清空历史报告内容（保留行）
 
@@ -87,6 +120,14 @@
   - `model_name = 'unknown'`（或保留；实现中统一置为 unknown）
 - 返回：影响行数 `cleared_count`
 - 日志：WS 广播 `"[ADMIN] 已清空 X 条报告内容"`
+
+### 2.1.1 全局 Cookie 配置
+
+- `GET /api/settings/douyin`：返回全局配置（脱敏后，例如仅返回是否已设置 Cookie、Cookie 条数等）
+- `PUT /api/settings/douyin`：更新全局配置
+  - 输入示例：`{ "cookies": [ { "name": "...", "value": "...", "domain": "...", "path": "/" } ], "user_agent_pool": [ ... ] }`
+  - 后端保存到 `app_settings`（key: `douyin.settings`）
+  - WS：广播 `"[ADMIN] 已更新抖音全局配置"`
 
 ### 2.2 任务批次列表
 
@@ -116,13 +157,18 @@
 
 `DELETE /api/task-runs`
 
-- 事务处理：
-  - 删除全部 task_run_videos
-  - 删除全部 threads（存在 run_id 的）
-  - 删除全部 summaries（存在 run_id 的）
-  - 删除全部 task_runs
-- 返回：删除计数
-- 日志：WS 广播最终结果
+为兼顾速度、安全、资源占用与超时控制，采用异步删除任务（后台分批提交）：
+
+- 请求参数：
+  - `batch_size`（默认 100）
+  - `timeout_seconds`（默认 30，用于单次 API 调用快速返回；后台任务持续执行）
+- 返回：`{ task_id }`
+- 后台任务执行：
+  - 每批次删除并 commit（避免大事务锁表）
+  - WS 推送进度（包含 counts 与剩余估算）
+  - 完成后 WS 推送最终影响行数
+- 可选扩展：
+  - `GET /api/admin/tasks/{task_id}` 查询状态（如前端不依赖 WS 时兜底）
 
 ### 2.5 按视频删除（全局删除）
 
@@ -141,6 +187,7 @@
 - 所有删除/清空接口必须使用数据库事务，异常则 rollback 并返回错误。
 - API 返回结构化 JSON，前端可提示用户“已删除/失败原因”。
 - 允许后端在删除时进行基本存在性校验：run_id/video_id 不存在则返回 404 语义（或 200 + deleted=0，二选一；实现阶段确定）。
+- 删除接口返回各表影响行数，并在 WS 中广播，用于监控异常批量删除。
 
 ## 设计三：前端 UI（数据管理入口）
 
@@ -180,6 +227,24 @@
 5. 解析结果列表卡片，提取 Top N 视频的 URL/标题/作者（以及必要的 id）
 6. 逐条进入视频页抓取评论
 
+### 失败场景与策略细化
+
+- 临时失败（网络抖动/导航超时/资源加载失败）
+  - 指数退避重试 3 次：2/4/8 秒
+  - WS 输出：`reason=RETRYING`，并记录 `metrics.retry`
+- 登录墙/验证码/滑块
+  - 明确错误码：`LOGIN_REQUIRED`
+  - WS 提示用户需要手动介入（登录或注入 Cookie）
+  - 返回空结果：`{ "videos": [], "error": "LOGIN_REQUIRED" }`
+- 请求频率控制
+  - 默认随机延迟 1–3s（可配置）
+  - WS 输出频控策略仅提示“已启用随机延迟”，不输出具体 cookie/敏感信息
+- Cookie 管理
+  - 从 `app_settings(douyin.settings)` 读取 cookies，注入到 BrowserContext
+  - 支持用户在前端“全局设置/数据管理”里维护 cookies（跨任务复用）
+- User-Agent
+  - 支持 UA 池轮换（来自 `douyin.settings.user_agent_pool` 或内置默认池）
+
 ### 失败策略（移除 mock）
 
 - DOM 超时、登录墙、验证码、滑块等导致无法获得搜索结果：
@@ -214,3 +279,8 @@ WS 日志至少包含：
   - 仍可通过“按视频删除”清理
   - “清空报告内容”可覆盖全部 summaries（无论是否有 run_id）
 
+## SQLite 特别注意
+
+- 建议启用 WAL：`PRAGMA journal_mode=WAL` 提升并发与写入体验。
+- 大批量删除后 DB 文件可能不回收空间：
+  - 提供可选 `VACUUM` 触发机制（建议作为异步任务，避免阻塞主线程与长事务）。
