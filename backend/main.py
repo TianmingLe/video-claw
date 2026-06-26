@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import sessionmaker
 from backend.database.models import get_engine, create_tables, Video, Thread, Summary, TaskRun, TaskRunVideo
 from backend.scrapers.douyin import DouyinScraper
@@ -24,6 +25,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    return """
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OmniScraper Backend</title>
+    <style>
+      body{font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial;max-width:920px;margin:40px auto;padding:0 16px;line-height:1.6}
+      .box{border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin:16px 0}
+      code{background:#f3f4f6;padding:2px 6px;border-radius:6px}
+      a{color:#2563eb;text-decoration:none}
+      a:hover{text-decoration:underline}
+    </style>
+  </head>
+  <body>
+    <h1>OmniScraper 后端已启动</h1>
+    <div class="box">
+      <div>你现在看到的是后端服务（API），不是前端 UI。</div>
+      <div>前端默认在 <code>http://localhost:4173</code>。</div>
+    </div>
+    <ul>
+      <li><a href="/docs">打开 Swagger API 文档</a></li>
+      <li><a href="/openapi.json">打开 OpenAPI JSON</a></li>
+    </ul>
+    <div class="box">
+      <div>前端会通过代理访问后端：</div>
+      <div><code>/api</code> → <code>http://127.0.0.1:8000</code></div>
+      <div><code>/ws</code> → <code>ws://127.0.0.1:8000</code></div>
+    </div>
+  </body>
+</html>
+"""
 
 # 使用环境变量或默认路径配置 DB
 DB_PATH = os.getenv("DB_PATH", "sqlite:///omniscraper_real.db")
